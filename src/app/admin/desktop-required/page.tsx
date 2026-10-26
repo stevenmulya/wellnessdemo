@@ -1,0 +1,40 @@
+import Link from "next/link";
+import { Monitor, ArrowLeft } from "lucide-react";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+
+export default function DesktopRequiredPage() {
+  return (
+    <div className="min-h-screen text-zinc-900 dark:text-zinc-100 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
+      <div className="absolute top-5 right-5 z-20">
+        <ThemeToggle />
+      </div>
+      <div className="glass-panel rounded-3xl p-8 max-w-md w-full space-y-6 relative z-10">
+        <div className="w-12 h-12 glass-panel-subtle text-zinc-900 dark:text-white rounded-2xl flex items-center justify-center mx-auto">
+          <Monitor className="w-6 h-6" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-white">
+            Desktop Browser Required
+          </h1>
+          <p className="text-zinc-600 dark:text-zinc-400 text-sm leading-relaxed">
+            The Admin Console is optimized for desktop screens. Please open this page on a desktop or laptop browser.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 pt-2">
+          <Link
+            href="/dashboard"
+            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl chrome-button text-xs font-medium"
+          >
+            <ArrowLeft className="w-4 h-4" /> Go to Dashboard
+          </Link>
+          <Link
+            href="/"
+            className="flex-1 inline-flex items-center justify-center px-5 py-2.5 rounded-xl glass-panel text-xs font-medium text-zinc-700 dark:text-zinc-300"
+          >
+            Home
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}

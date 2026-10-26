@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String               @id @default(cuid())
+  email             String               @unique
+  passwordHash      String
+  fullName          String
+  phone             String?
+  role              String               @default("USER") // "USER" | "SUPERADMIN"
+  status            String               @default("ACTIVE") // "ACTIVE" | "SUSPENDED"
+  tokenVersion      Int                  @default(0) // Invalidates all sessions on password change
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  resetTokens       PasswordResetToken[]
+  enrollments       Enrollment[]
+  pushSubscriptions PushSubscription[]
+  dayProgress       DayProgress[]
+
+  @@index([role])
+  @@index([status])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Program {
+  id                   String        @id @default(cuid())
+  title                String
+  slug                 String        @unique
+  description          String
+  recommendedFor       String        @default("All Levels • Mindful Movement & Longevity")
+  coachName            String        @default("Head Wellness Coach")
+  durationDays         Int           @default(21) // Target curriculum length (days required before final launch)
+  price                Float         @default(0)
+  maxQuota             Int           @default(50) // Participant quota limit per batch
+  communityLink        String?       // External WhatsApp / Telegram group URL
+  locationType         String        @default("ONLINE") // "ONLINE" | "ONSITE" | "HYBRID"
+  city                 String?       // Contoh: "Jakarta Selatan", "Bali", "Surabaya"
+  venueAddress         String?       // Alamat fisik venue / studio
+  virtualFallbackAvailable Boolean   @default(true) // Opsi bagi peserta luar kota untuk ikut via Live Stream Zoom
+  startDate            DateTime      @default(now())
+  endDate              DateTime      @default(now())
+  registrationDeadline DateTime      @default(now())
+  isPublished          Boolean       @default(false) // Draft by default until all days are filled & launched
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  days                 ProgramDay[]
+  enrollments          Enrollment[]
+
+  @@index([isPublished])
+  @@index([startDate])
+  @@index([locationType])
+}
+
+model ProgramDay {
+  id                 String        @id @default(cuid())
+  programId          String
+  dayNumber          Int
+  title              String
+  dayType            String        @default("TRAINING_DAY") // "TRAINING_DAY" | "REST_DAY" | "MEETUP_DAY"
+  videoUrl           String?
+  videoChecklist     String?       // JSON string of string checklist items
+  mealRecommendation String?       // Nutritional guidance for the day
+  dailyAssessment    String?       // Reflection / quiz / workout questionnaire
+  pendingReminder    String?       // Motivational reminder message when not yet completed
+  completedReminder  String?       // Celebration / recovery reminder when finished
+  meetupLink         String?       // Virtual meeting link (Zoom / Google Meet) or On-site map link
+  onsiteVenue        String?       // Physical location / venue name for On-Site hybrid sessions
+  onsiteSchedule     String?       // Time & schedule details for On-Site / Meetup sessions
+  restInstructions   String?       // Tips / breathwork guide for REST_DAY
+  coachName          String?       // Lead coach specifically assigned for this daily module
+  recommendedFor     String?       // Specific focus / target for this day (derived from program focus)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  program            Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  progress           DayProgress[]
+
+  @@unique([programId, dayNumber])
+  @@index([programId])
+}
+
+model DayProgress {
+  id                 String     @id @default(cuid())
+  userId             String
+  programDayId       String
+  videoWatched       Boolean    @default(false)
+  isCompleted        Boolean    @default(false)
+  checklistCompleted String?    // JSON string of completed items
+  assessmentResponse String?    // User feedback / score
+  completedAt        DateTime?
+  updatedAt          DateTime   @updatedAt
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programDay         ProgramDay @relation(fields: [programDayId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, programDayId])
+  @@index([programDayId])
+  @@index([isCompleted])
+}
+
+model Enrollment {
+  id               String    @id @default(cuid())
+  userId           String
+  programId        String
+  status           String    @default("PENDING") // "PENDING" | "ACTIVE" | "EXPIRED" | "CANCELLED"
+  attendanceMode   String    @default("VIRTUAL") // "IN_PERSON" | "VIRTUAL"
+  paymentReference String?   @unique
+  invoiceExpiresAt DateTime? // 15-minute QRIS invoice validity window
+  paidAt           DateTime?
+  validUntil       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program          Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, programId])
+  @@index([programId, status])
+  @@index([status])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
