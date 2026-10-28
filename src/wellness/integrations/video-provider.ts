@@ -92,3 +92,17 @@ export function normalizeVideoEmbed(rawUrl?: string | null): NormalizedVideoEmbe
     embedUrl: rawUrl.trim(),
   };
 }
+
+/**
+ * Extracts a high-res video thumbnail image URL for YouTube / Vimeo / fallback.
+ */
+export function extractVideoThumbnail(rawUrl?: string | null, fallbackImg = "/test.jpg"): string {
+  if (!rawUrl || !rawUrl.trim()) return fallbackImg;
+
+  const ytId = extractYouTubeId(rawUrl);
+  if (ytId) {
+    return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+  }
+
+  return fallbackImg;
+}

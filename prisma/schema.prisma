@@ -44,10 +44,14 @@ model Program {
   title                String
   slug                 String        @unique
   description          String
+  category             String        @default("Pilates") // "Pilates" | "Workout" | "Mobility & Longevity"
   recommendedFor       String        @default("All Levels • Mindful Movement & Longevity")
   coachName            String        @default("Head Wellness Coach")
+  coachTitle           String?       @default("Movement & Longevity Specialist")
   durationDays         Int           @default(21) // Target curriculum length (days required before final launch)
-  price                Float         @default(0)
+  actualPrice          Float         @default(0) // Harga normal sebelum diskon
+  discountPercentage   Int           @default(0) // Diskon kelipatan 5% (0, 5, 10, ... 50)
+  price                Float         @default(0) // Final net price yang ditagihkan ke user (actualPrice - diskon)
   maxQuota             Int           @default(50) // Participant quota limit per batch
   communityLink        String?       // External WhatsApp / Telegram group URL
   locationType         String        @default("ONLINE") // "ONLINE" | "ONSITE" | "HYBRID"
@@ -56,57 +60,101 @@ model Program {
   virtualFallbackAvailable Boolean   @default(true) // Opsi bagi peserta luar kota untuk ikut via Live Stream Zoom
   startDate            DateTime      @default(now())
   endDate              DateTime      @default(now())
+  registrationOpenDate DateTime?     // Kapan pendaftaran dibuka (null jika TBA / Coming Soon)
   registrationDeadline DateTime      @default(now())
-  isPublished          Boolean       @default(false) // Draft by default until all days are filled & launched
+  status               String        @default("DRAFT") // "DRAFT" | "PUBLISHED"
+  isPublished          Boolean       @default(false) // Status publish/unpublish eksplisit
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   days                 ProgramDay[]
   enrollments          Enrollment[]
 
+  @@index([status])
   @@index([isPublished])
   @@index([startDate])
   @@index([locationType])
 }
 
+model MasterCoach {
+  id        String   @id @default(cuid())
+  name      String
+  title     String   // e.g. "Senior Pilates Specialist"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MasterTargetAudience {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "Mom", "Dad", "Business Woman", "Employee", "Desk Worker"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MasterCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "Pilates", "Workout", "Mobility & Longevity"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model ProgramDay {
-  id                 String        @id @default(cuid())
-  programId          String
-  dayNumber          Int
-  title              String
-  dayType            String        @default("TRAINING_DAY") // "TRAINING_DAY" | "REST_DAY" | "MEETUP_DAY"
-  videoUrl           String?
-  videoChecklist     String?       // JSON string of string checklist items
-  mealRecommendation String?       // Nutritional guidance for the day
-  dailyAssessment    String?       // Reflection / quiz / workout questionnaire
-  pendingReminder    String?       // Motivational reminder message when not yet completed
-  completedReminder  String?       // Celebration / recovery reminder when finished
-  meetupLink         String?       // Virtual meeting link (Zoom / Google Meet) or On-site map link
-  onsiteVenue        String?       // Physical location / venue name for On-Site hybrid sessions
-  onsiteSchedule     String?       // Time & schedule details for On-Site / Meetup sessions
-  restInstructions   String?       // Tips / breathwork guide for REST_DAY
-  coachName          String?       // Lead coach specifically assigned for this daily module
-  recommendedFor     String?       // Specific focus / target for this day (derived from program focus)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
-  program            Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
-  progress           DayProgress[]
+  id                  String        @id @default(cuid())
+  programId           String
+  dayNumber           Int
+  title               String
+  dayType             String        @default("TRAINING_DAY") // "TRAINING_DAY" | "REST_DAY" | "CONNECTION_DAY" | "MEETUP_DAY"
+  workoutOptions      String?       // JSON string array of workout types: e.g. ["Hot Pilates", "Strength Workout", "Outdoor Run"]
+  sleepRecommendation String?       // Guidance: e.g. "Target 8 Jam • Tidur sebelum 22:30 WIB"
+  dayNotifications    String?       // JSON array string: [{ time: "07:00", message: "...", label: "Morning" }, ...]
+  videoUrl            String?
+  videoChecklist      String?       // JSON string of string checklist items
+  mealRecommendation  String?       // Nutritional guidance for the day
+  dailyAssessment     String?       // Reflection / quiz / workout questionnaire
+  pendingReminder     String?       // Motivational reminder message when not yet completed
+  completedReminder   String?       // Celebration / recovery reminder when finished
+  meetupLink          String?       // Virtual meeting link (Zoom / Google Meet)
+  mapLink             String?       // Direct Google Maps link for the venue
+  onsiteVenue         String?       // Physical location / venue name for On-Site / Connect sessions
+  onsiteSchedule      String?       // Time & schedule details for On-Site / Connect sessions
+  eventTitle          String?       // Event title for Connect Day (e.g. "BMS Community Studio Flow & Brunch")
+  eventHost           String?       // Who they will meet with (e.g. "Coach Marcus & Special Guests")
+  eventDetails        String?       // Rundown & details of the event
+  restInstructions    String?       // Tips / breathwork guide for REST_DAY
+  coachName           String?       // Lead coach specifically assigned for this daily module
+  recommendedFor      String?       // Specific focus / target for this day (derived from program focus)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  program             Program       @relation(fields: [programId], references: [id], onDelete: Cascade)
+  progress            DayProgress[]
 
   @@unique([programId, dayNumber])
   @@index([programId])
 }
 
 model DayProgress {
-  id                 String     @id @default(cuid())
-  userId             String
-  programDayId       String
-  videoWatched       Boolean    @default(false)
-  isCompleted        Boolean    @default(false)
-  checklistCompleted String?    // JSON string of completed items
-  assessmentResponse String?    // User feedback / score
-  completedAt        DateTime?
-  updatedAt          DateTime   @updatedAt
-  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  programDay         ProgramDay @relation(fields: [programDayId], references: [id], onDelete: Cascade)
+  id                   String     @id @default(cuid())
+  userId               String
+  programDayId         String
+  videoWatched         Boolean    @default(false)
+  isCompleted          Boolean    @default(false)
+  checklistCompleted   String?    // JSON string of completed items
+  selectedWorkout      String?    // Selected workout type e.g. "Hot Pilates"
+  photoBeforeUrl       String?    // Before workout photo (data URL / link)
+  photoAfterUrl        String?    // After workout photo (data URL / link)
+  workoutNotes         String?    // Member notes regarding today's training
+  eventFeedback        String?    // Member feedback notes regarding connect meetup
+  mealCompliance       String?    // "FULL" | "PARTIAL" | "NONE"
+  mealNotes            String?    // What was eaten / adherence notes
+  dailyReflection      String?    // "Dear Diary" daily reflections
+  happinessRate        Int?       // Rating 1 to 5
+  bedtime              String?    // Previous night bedtime e.g. "23:00"
+  wakeTime             String?    // Morning wake time e.g. "06:30"
+  sleepDurationMinutes Int?       // Calculated sleep duration in minutes
+  assessmentResponse   String?    // User feedback / score (backward compatibility)
+  completedAt          DateTime?
+  updatedAt            DateTime   @updatedAt
+  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programDay           ProgramDay @relation(fields: [programDayId], references: [id], onDelete: Cascade)
 
   @@unique([userId, programDayId])
   @@index([programDayId])

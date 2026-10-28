@@ -10,7 +10,17 @@ import {
   wellnessAdminUpdateProgramMeta,
   wellnessAdminDeleteProgram,
   wellnessAdminCreateProgram,
+  wellnessAdminSetProgramStatus,
 } from "@/wellness/actions/program";
+import {
+  wellnessCreateMasterCoach,
+  wellnessDeleteMasterCoach,
+  wellnessCreateMasterTargetAudience,
+  wellnessDeleteMasterTargetAudience,
+  wellnessCreateMasterCategory,
+  wellnessDeleteMasterCategory,
+  MasterDataPayload,
+} from "@/wellness/actions/master";
 import {
   wellnessAdminApprovePayment,
   wellnessAdminUpdateUserStatus,
@@ -23,6 +33,7 @@ import { normalizeVideoEmbed } from "@/wellness/integrations/video-provider";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import {
   Users,
+  Moon,
   QrCode,
   Plus,
   CheckCircle2,
@@ -60,13 +71,86 @@ import {
   X,
   UserCheck,
   Tag,
+  Bell,
+  Clock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+
+export interface DayNotificationState {
+  time: string;
+  message: string;
+  label?: string;
+}
+
+export function getDefaultNotificationsForType(dayType: string): DayNotificationState[] {
+  if (dayType === "REST_DAY") {
+    return [
+      {
+        time: "08:00",
+        label: "Morning • Active Restoration",
+        message: "Today is a Rest Day. Take a 20-minute gentle outdoor walk, hydrate, and allow your nervous system to recharge.",
+      },
+      {
+        time: "20:30",
+        label: "Evening • Recovery Diary & Sleep",
+        message: "Log your restorative insights in Dear Diary and align your sleep environment for deep cellular recovery.",
+      },
+    ];
+  }
+  if (dayType === "CONNECTION_DAY" || dayType === "MEETUP_DAY") {
+    return [
+      {
+        time: "08:30",
+        label: "Morning • Live Studio / Zoom Circle",
+        message: "Live Community Circle begins today. Check the studio directions or virtual link on your cohort dashboard.",
+      },
+      {
+        time: "13:00",
+        label: "Afternoon • Community Reflection",
+        message: "Thank you for connecting! Nourish mindfully and log your nutrition compliance for today.",
+      },
+      {
+        time: "20:30",
+        label: "Evening • Gratitude & Sleep Track",
+        message: "Record your shared insights in Dear Diary and commit to your target bedtime schedule.",
+      },
+    ];
+  }
+  return [
+    {
+      time: "07:00",
+      label: "Morning • Movement Ritual",
+      message: "Today's movement sequence is live. Dedicate 25 minutes for practice and capture your before/after check-in.",
+    },
+    {
+      time: "12:30",
+      label: "Afternoon • Clean Nourishment",
+      message: "Time for mindful midday fuel. Review your coach's meal protocol and log your dietary compliance.",
+    },
+    {
+      time: "20:30",
+      label: "Evening • Dear Diary & Cutoff",
+      message: "Complete your daily Dear Diary, rate your fulfillment index, and finalize logs prior to the 23:59 cutoff.",
+    },
+  ];
+}
+
+function formatDate(dateVal?: Date | string | null): string {
+  if (!dateVal) return "";
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+}
 
 export interface AdminProgramDay {
   id: string;
   dayNumber: number;
   title: string;
   dayType: string;
+  workoutOptions?: string[];
+  sleepRecommendation?: string | null;
+  dayNotifications?: DayNotificationState[];
   videoUrl: string | null;
   videoChecklist: string[];
   mealRecommendation: string | null;
@@ -74,8 +158,12 @@ export interface AdminProgramDay {
   pendingReminder: string | null;
   completedReminder: string | null;
   meetupLink: string | null;
+  mapLink?: string | null;
   onsiteVenue: string | null;
   onsiteSchedule: string | null;
+  eventTitle?: string | null;
+  eventHost?: string | null;
+  eventDetails?: string | null;
   restInstructions: string | null;
   coachName?: string | null;
   recommendedFor?: string | null;
@@ -86,9 +174,13 @@ export interface AdminProgram {
   title: string;
   slug: string;
   description: string;
+  category?: string | null;
   recommendedFor: string;
   coachName: string;
+  coachTitle?: string | null;
   durationDays: number;
+  actualPrice?: number;
+  discountPercentage?: number;
   price: number;
   maxQuota: number;
   communityLink: string | null;
@@ -98,7 +190,9 @@ export interface AdminProgram {
   virtualFallbackAvailable?: boolean | null;
   startDate: Date | string;
   endDate: Date | string;
+  registrationOpenDate?: Date | string | null;
   registrationDeadline: Date | string;
+  status?: string;
   isPublished: boolean;
   dayCount: number;
   activeSubscribers: number;
@@ -145,6 +239,7 @@ export interface AdminUserItem {
 interface AdminClientProps {
   initialUsers: AdminUserItem[];
   initialPrograms: AdminProgram[];
+  initialMasterData: MasterDataPayload;
   currentAdminId: string;
 }
 
@@ -159,10 +254,11 @@ function isDayFilled(day: AdminProgramDay | undefined): boolean {
   if (day.dayType === "REST_DAY") {
     return Boolean(day.restInstructions && day.restInstructions.trim().length > 0);
   }
-  if (day.dayType === "MEETUP_DAY") {
+  if (day.dayType === "CONNECTION_DAY" || day.dayType === "MEETUP_DAY") {
     return Boolean(
       (day.onsiteVenue && day.onsiteVenue.trim().length > 0) ||
-        (day.onsiteSchedule && day.onsiteSchedule.trim().length > 0)
+        (day.onsiteSchedule && day.onsiteSchedule.trim().length > 0) ||
+        (day.meetupLink && day.meetupLink.trim().length > 0)
     );
   }
   return false;
@@ -210,17 +306,17 @@ function PaginationBar({
         <strong className="text-zinc-900 dark:text-white">{totalItems}</strong> {itemLabel}
       </span>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={currentPage <= 1}
-          className="px-3 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-35 flex items-center gap-1 whitespace-nowrap transition"
+          className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-35 flex items-center gap-1 whitespace-nowrap transition"
         >
-          <ChevronLeft className="w-3 h-3 shrink-0" /> Prev
+          <ChevronLeft className="w-3.5 h-3.5 shrink-0" /> Prev
         </button>
 
-        <span className="px-2.5 text-[11px] font-medium text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+        <span className="px-2 text-xs font-mono text-zinc-500 whitespace-nowrap">
           {currentPage} / {totalPages}
         </span>
 
@@ -228,9 +324,9 @@ function PaginationBar({
           type="button"
           onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
           disabled={currentPage >= totalPages}
-          className="px-3 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-35 flex items-center gap-1 whitespace-nowrap transition"
+          className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-35 flex items-center gap-1 whitespace-nowrap transition"
         >
-          Next <ChevronRight className="w-3 h-3 shrink-0" />
+          Next <ChevronRight className="w-3.5 h-3.5 shrink-0" />
         </button>
       </div>
     </div>
@@ -249,6 +345,15 @@ function stringifyTagList(list: string[]): string {
   return list.filter(Boolean).join(", ");
 }
 
+function toggleTagInList(tag: string, currentVal: string): string {
+  const currentTags = parseTagList(currentVal);
+  const exists = currentTags.some((t) => t.toLowerCase() === tag.toLowerCase());
+  const nextTags = exists
+    ? currentTags.filter((t) => t.toLowerCase() !== tag.toLowerCase())
+    : [...currentTags, tag];
+  return stringifyTagList(nextTags);
+}
+
 interface MultiTagInputProps {
   label: string;
   subLabel?: string;
@@ -258,7 +363,7 @@ interface MultiTagInputProps {
   disabled?: boolean;
   quickSuggestions?: string[];
   icon?: React.ComponentType<{ className?: string }>;
-  chipColor?: "orange" | "zinc";
+  chipColor?: "zinc" | "chrome";
 }
 
 function MultiTagInput({
@@ -312,17 +417,17 @@ function MultiTagInput({
       </div>
 
       <div
-        className={`min-h-[42px] p-2 rounded-2xl glass-input flex flex-wrap items-center gap-1.5 ${
+        className={`min-h-[42px] p-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 flex flex-wrap items-center gap-1.5 ${
           disabled ? "opacity-60 cursor-not-allowed" : ""
         }`}
       >
         {tags.map((tag, idx) => (
           <span
             key={idx}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium border animate-in fade-in zoom-in-95 duration-150 ${
-              chipColor === "orange"
-                ? "bg-orange-500/15 text-orange-700 dark:text-orange-300 border-orange-500/25"
-                : "bg-zinc-900/10 dark:bg-white/10 text-zinc-900 dark:text-white border-zinc-900/[0.08] dark:border-white/10"
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${
+              chipColor === "chrome"
+                ? "bg-zinc-200 dark:bg-white/15 text-zinc-900 dark:text-zinc-100 border-zinc-300 dark:border-white/20"
+                : "bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border-zinc-200 dark:border-white/10 shadow-xs"
             }`}
           >
             <span>{tag}</span>
@@ -353,7 +458,7 @@ function MultiTagInput({
               <button
                 type="button"
                 onClick={() => addTag(draft)}
-                className="px-2.5 py-1 rounded-lg chrome-button text-[10px] font-semibold shrink-0"
+                className="px-2.5 py-1 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-[10px] font-semibold shrink-0 shadow-2xs hover:opacity-90 transition"
               >
                 + Add
               </button>
@@ -386,18 +491,29 @@ function MultiTagInput({
 export function AdminClient({
   initialUsers,
   initialPrograms,
+  initialMasterData,
   currentAdminId,
 }: AdminClientProps) {
   const router = useRouter();
 
   const [activeMenu, setActiveMenu] = useState<
-    "dashboard" | "programs" | "members" | "payments"
+    "dashboard" | "programs" | "master" | "members" | "payments"
   >("dashboard");
 
   const [users, setUsers] = useState<AdminUserItem[]>(initialUsers);
   const [programs, setPrograms] = useState<AdminProgram[]>(initialPrograms);
+  const [masterData, setMasterData] = useState<MasterDataPayload>(
+    initialMasterData || { coaches: [], targetAudiences: [], categories: [] }
+  );
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [isCreatingProgram, setIsCreatingProgram] = useState(false);
+
+  // Master Data form inputs
+  const [newCoachName, setNewCoachName] = useState("");
+  const [newCoachTitle, setNewCoachTitle] = useState("");
+  const [newAudienceName, setNewAudienceName] = useState("");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [masterActionLoading, setMasterActionLoading] = useState(false);
 
   const defaultStart = new Date(Date.now() + 3 * 24 * 3600 * 1000)
     .toISOString()
@@ -406,22 +522,35 @@ export function AdminClient({
     .toISOString()
     .split("T")[0];
 
+  const initialCoach = masterData.coaches[0] || {
+    name: "Coach Marcus Vance",
+    title: "Movement & Longevity Specialist",
+  };
+  const initialCategory = masterData.categories[0]?.name || "Pilates";
+
   const [createForm, setCreateForm] = useState({
     title: "",
-    coachName: "Coach Marcus Vance",
-    recommendedFor: "All Levels • Mindful Movement & Longevity",
     description: "",
-    durationDays: 21,
-    price: 299000,
+    category: initialCategory,
+    coachName: initialCoach.name,
+    coachTitle: initialCoach.title,
+    recommendedFor: "Desk Workers, Sedentary Professionals",
+    durationDays: 7,
+    startDate: defaultStart,
+    endDate: computeEndDate(defaultStart, 7),
+    registrationOpenDate: "",
+    isTbaOpenDate: false,
+    registrationDeadline: defaultDeadline,
+    actualPrice: 350000,
+    discountPercentage: 0,
+    price: 350000,
     maxQuota: 35,
-    communityLink: "https://chat.whatsapp.com/wellness-cohort-group",
+    communityLink: "",
     locationType: "ONLINE" as "ONLINE" | "ONSITE" | "HYBRID",
     city: "",
     venueAddress: "",
     virtualFallbackAvailable: true,
-    startDate: defaultStart,
-    endDate: computeEndDate(defaultStart, 21),
-    registrationDeadline: defaultDeadline,
+    status: "DRAFT" as "DRAFT" | "PUBLISHED",
   });
   const [creatingLoading, setCreatingLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -429,7 +558,7 @@ export function AdminClient({
   const [selectedProgramId, setSelectedProgramId] = useState<string | null>(null);
 
   const [programSearch, setProgramSearch] = useState("");
-  const [programFilter, setProgramFilter] = useState<"ALL" | "LIVE" | "DRAFT">("ALL");
+  const [programFilter, setProgramFilter] = useState<"ALL" | "PUBLISHED" | "DRAFT">("ALL");
   const [programPage, setProgramPage] = useState(1);
   const PROGRAM_PAGE_SIZE = 4;
 
@@ -465,40 +594,57 @@ export function AdminClient({
     text: string;
   } | null>(null);
 
+  const [metaError, setMetaError] = useState<string | null>(null);
+  const [dayError, setDayError] = useState<string | null>(null);
+
   const selectedProgram = programs.find((p) => p.id === selectedProgramId) || null;
   const currentAdmin = users.find((u) => u.id === currentAdminId);
 
   const [metaForm, setMetaForm] = useState({
     title: "",
-    coachName: "",
-    recommendedFor: "",
     description: "",
-    durationDays: 21,
-    price: 299000,
+    category: "Pilates",
+    coachName: "",
+    coachTitle: "",
+    recommendedFor: "",
+    durationDays: 7,
+    startDate: "",
+    endDate: "",
+    registrationOpenDate: "",
+    isTbaOpenDate: false,
+    registrationDeadline: "",
+    actualPrice: 0,
+    discountPercentage: 0,
+    price: 0,
     maxQuota: 35,
     communityLink: "",
     locationType: "ONLINE" as "ONLINE" | "ONSITE" | "HYBRID",
     city: "",
     venueAddress: "",
     virtualFallbackAvailable: true,
-    startDate: "",
-    endDate: "",
-    registrationDeadline: "",
+    status: "DRAFT" as "DRAFT" | "PUBLISHED",
   });
 
   const [dayForm, setDayForm] = useState<{
     title: string;
-    dayType: "TRAINING_DAY" | "REST_DAY" | "MEETUP_DAY";
+    dayType: "TRAINING_DAY" | "REST_DAY" | "CONNECTION_DAY" | "MEETUP_DAY";
     coachName: string;
     recommendedFor: string;
     videoUrl: string;
     videoChecklist: string[];
     mealRecommendation: string;
     dailyAssessment: string;
+    workoutOptions: string[];
+    sleepRecommendation: string;
+    dayNotifications: DayNotificationState[];
     restInstructions: string;
     onsiteVenue: string;
     onsiteSchedule: string;
     meetupLink: string;
+    mapLink: string;
+    eventTitle: string;
+    eventHost: string;
+    eventDetails: string;
     pendingReminder: string;
     completedReminder: string;
   }>({
@@ -506,14 +652,27 @@ export function AdminClient({
     dayType: "TRAINING_DAY",
     coachName: "",
     recommendedFor: "",
+    workoutOptions: [
+      "Hot Pilates",
+      "Strength Workout",
+      "Outdoor Running",
+      "Yoga & Mobility Flow",
+      "Cardio / HIIT",
+    ],
+    sleepRecommendation: "Target 8 Hours • Wind down before 22:30",
+    dayNotifications: getDefaultNotificationsForType("TRAINING_DAY"),
     videoUrl: "",
-    videoChecklist: ["Complete today's workout", "Follow the meal guide"],
+    videoChecklist: ["Push-ups = 30 reps", "Sit-ups = 50 reps", "Pull-ups = 10 reps"],
     mealRecommendation: "",
     dailyAssessment: "",
     restInstructions: "",
     onsiteVenue: "",
     onsiteSchedule: "",
     meetupLink: "",
+    mapLink: "",
+    eventTitle: "",
+    eventHost: "",
+    eventDetails: "",
     pendingReminder: "",
     completedReminder: "",
   });
@@ -527,8 +686,8 @@ export function AdminClient({
       const normalizedType =
         existing.dayType === "REST_DAY"
           ? "REST_DAY"
-          : existing.dayType === "MEETUP_DAY"
-          ? "MEETUP_DAY"
+          : existing.dayType === "CONNECTION_DAY" || existing.dayType === "MEETUP_DAY"
+          ? "CONNECTION_DAY"
           : "TRAINING_DAY";
 
       setDayForm({
@@ -536,6 +695,22 @@ export function AdminClient({
         dayType: normalizedType,
         coachName: existing.coachName || (progCoaches[0] || ""),
         recommendedFor: existing.recommendedFor || (progRecommended[0] || ""),
+        workoutOptions:
+          existing.workoutOptions && existing.workoutOptions.length > 0
+            ? existing.workoutOptions
+            : [
+                "Hot Pilates",
+                "Strength Workout",
+                "Outdoor Running",
+                "Yoga & Mobility Flow",
+                "Cardio / HIIT",
+              ],
+        sleepRecommendation:
+          existing.sleepRecommendation || "Target 8 Hours • Wind down before 22:30",
+        dayNotifications:
+          existing.dayNotifications && existing.dayNotifications.length > 0
+            ? existing.dayNotifications
+            : getDefaultNotificationsForType(normalizedType),
         videoUrl: existing.videoUrl || "",
         videoChecklist:
           existing.videoChecklist && existing.videoChecklist.length > 0
@@ -547,6 +722,10 @@ export function AdminClient({
         onsiteVenue: existing.onsiteVenue || "",
         onsiteSchedule: existing.onsiteSchedule || "",
         meetupLink: existing.meetupLink || "",
+        mapLink: existing.mapLink || "",
+        eventTitle: existing.eventTitle || "",
+        eventHost: existing.eventHost || "",
+        eventDetails: existing.eventDetails || "",
         pendingReminder: existing.pendingReminder || "",
         completedReminder: existing.completedReminder || "",
       });
@@ -556,7 +735,16 @@ export function AdminClient({
         dayType: "TRAINING_DAY",
         coachName: progCoaches[0] || "",
         recommendedFor: progRecommended[0] || "",
-        videoUrl: "https://www.youtube.com/embed/v7AYKMP6rOE",
+        workoutOptions: [
+          "Hot Pilates",
+          "Strength Workout",
+          "Outdoor Running",
+          "Yoga & Mobility Flow",
+          "Cardio / HIIT",
+        ],
+        sleepRecommendation: "Target 8 Hours • Wind down before 22:30",
+        dayNotifications: getDefaultNotificationsForType("TRAINING_DAY"),
+        videoUrl: "https://www.youtube.com/watch?v=sTANio_2E0Q",
         videoChecklist: [
           "Complete today's workout video",
           "Drink 2.5L of water",
@@ -569,6 +757,10 @@ export function AdminClient({
         onsiteVenue: "",
         onsiteSchedule: "",
         meetupLink: "",
+        mapLink: "",
+        eventTitle: "",
+        eventHost: "",
+        eventDetails: "",
         pendingReminder: `Day ${dayNumber} is ready. Complete your session before 23:59.`,
         completedReminder: `Well done on completing Day ${dayNumber}! Rest well tonight.`,
       });
@@ -578,10 +770,14 @@ export function AdminClient({
   const loadMetaIntoForm = (prog: AdminProgram) => {
     setMetaForm({
       title: prog.title,
-      coachName: prog.coachName,
-      recommendedFor: prog.recommendedFor || "All Levels",
       description: prog.description,
-      durationDays: prog.durationDays || 21,
+      category: prog.category || "Pilates",
+      coachName: prog.coachName,
+      coachTitle: prog.coachTitle || "",
+      recommendedFor: prog.recommendedFor || "All Levels",
+      durationDays: prog.durationDays || 7,
+      actualPrice: prog.actualPrice ?? prog.price,
+      discountPercentage: prog.discountPercentage ?? 0,
       price: prog.price,
       maxQuota: prog.maxQuota,
       communityLink: prog.communityLink || "",
@@ -591,7 +787,10 @@ export function AdminClient({
       virtualFallbackAvailable: prog.virtualFallbackAvailable ?? true,
       startDate: toInputDate(prog.startDate),
       endDate: toInputDate(prog.endDate),
+      registrationOpenDate: prog.registrationOpenDate ? toInputDate(prog.registrationOpenDate) : "",
+      isTbaOpenDate: !prog.registrationOpenDate,
       registrationDeadline: toInputDate(prog.registrationDeadline),
+      status: (prog.status as "DRAFT" | "PUBLISHED") || (prog.isPublished ? "PUBLISHED" : "DRAFT"),
     });
   };
 
@@ -628,17 +827,23 @@ export function AdminClient({
   const handleSaveDay = async (prog: AdminProgram, moveNext = false) => {
     setSavingDay(true);
     setFeedback(null);
+    setDayError(null);
 
     try {
       const cleanedChecklist = dayForm.videoChecklist
         .map((item) => item.trim())
         .filter(Boolean);
 
+      const isConnect = dayForm.dayType === "CONNECTION_DAY" || dayForm.dayType === "MEETUP_DAY";
+
       const res = await wellnessAdminSaveProgramDay({
         programId: prog.id,
         dayNumber: selectedDayNum,
         title: dayForm.title,
         dayType: dayForm.dayType,
+        workoutOptions: dayForm.dayType === "TRAINING_DAY" ? dayForm.workoutOptions : [],
+        sleepRecommendation: dayForm.sleepRecommendation,
+        dayNotifications: dayForm.dayNotifications,
         coachName: dayForm.dayType === "REST_DAY" ? "" : dayForm.coachName,
         recommendedFor: dayForm.dayType === "REST_DAY" ? "" : dayForm.recommendedFor,
         videoUrl: dayForm.dayType === "TRAINING_DAY" ? dayForm.videoUrl : "",
@@ -652,17 +857,19 @@ export function AdminClient({
         dailyAssessment: dayForm.dailyAssessment,
         restInstructions:
           dayForm.dayType === "REST_DAY" ? dayForm.restInstructions : "",
-        onsiteVenue:
-          dayForm.dayType === "MEETUP_DAY" ? dayForm.onsiteVenue : "",
-        onsiteSchedule:
-          dayForm.dayType === "MEETUP_DAY" ? dayForm.onsiteSchedule : "",
-        meetupLink:
-          dayForm.dayType === "MEETUP_DAY" ? dayForm.meetupLink : "",
+        onsiteVenue: isConnect ? dayForm.onsiteVenue : "",
+        onsiteSchedule: isConnect ? dayForm.onsiteSchedule : "",
+        meetupLink: isConnect ? dayForm.meetupLink : "",
+        mapLink: isConnect ? dayForm.mapLink : "",
+        eventTitle: isConnect ? dayForm.eventTitle : "",
+        eventHost: isConnect ? dayForm.eventHost : "",
+        eventDetails: isConnect ? dayForm.eventDetails : "",
         pendingReminder: dayForm.pendingReminder,
         completedReminder: dayForm.completedReminder,
       });
 
       if (res.success && res.data) {
+        setDayError(null);
         const savedDay = res.data as AdminProgramDay;
         const updatedPrograms = programs.map((p) => {
           if (p.id !== prog.id) return p;
@@ -696,15 +903,19 @@ export function AdminClient({
         }
         router.refresh();
       } else {
+        const errMsg = res.message || "Unable to save day curriculum.";
+        setDayError(errMsg);
         setFeedback({
           type: "error",
-          text: res.message || "Unable to save day.",
+          text: errMsg,
         });
       }
     } catch {
+      const netErr = "Network error while saving day curriculum.";
+      setDayError(netErr);
       setFeedback({
         type: "error",
-        text: "Network error while saving day.",
+        text: netErr,
       });
     } finally {
       setSavingDay(false);
@@ -749,24 +960,39 @@ export function AdminClient({
   const handleSaveMeta = async (prog: AdminProgram) => {
     setSavingMeta(true);
     setFeedback(null);
+    setMetaError(null);
     try {
+      const calculatedFinalPrice = Math.max(
+        0,
+        Math.round((Number(metaForm.actualPrice) || 0) * (1 - (Number(metaForm.discountPercentage) || 0) / 100))
+      );
+
       const res = await wellnessAdminUpdateProgramMeta({
         programId: prog.id,
-        title: metaForm.title,
-        coachName: metaForm.coachName,
-        recommendedFor: metaForm.recommendedFor,
-        description: metaForm.description,
-        durationDays: Number(metaForm.durationDays) || 21,
-        price: Number(metaForm.price) || 0,
+        title: metaForm.title.trim(),
+        description: metaForm.description.trim(),
+        category: metaForm.category.trim(),
+        coachName: metaForm.coachName.trim(),
+        coachTitle: metaForm.coachTitle?.trim() || undefined,
+        recommendedFor: metaForm.recommendedFor.trim(),
+        durationDays: Number(metaForm.durationDays) || 7,
+        actualPrice: Number(metaForm.actualPrice) || 0,
+        discountPercentage: Number(metaForm.discountPercentage) || 0,
+        price: calculatedFinalPrice,
         maxQuota: Number(metaForm.maxQuota) || 35,
-        communityLink: metaForm.communityLink,
+        communityLink: metaForm.communityLink?.trim() || undefined,
         locationType: metaForm.locationType,
         city: metaForm.city.trim() || undefined,
         venueAddress: metaForm.venueAddress.trim() || undefined,
         virtualFallbackAvailable: metaForm.virtualFallbackAvailable,
         startDate: new Date(metaForm.startDate),
         endDate: new Date(metaForm.endDate),
+        registrationOpenDate:
+          metaForm.isTbaOpenDate || !metaForm.registrationOpenDate
+            ? null
+            : new Date(metaForm.registrationOpenDate),
         registrationDeadline: new Date(metaForm.registrationDeadline),
+        status: metaForm.status,
       });
 
       if (res.success) {
@@ -776,11 +1002,15 @@ export function AdminClient({
               ? {
                   ...p,
                   title: metaForm.title,
-                  coachName: metaForm.coachName,
-                  recommendedFor: metaForm.recommendedFor,
                   description: metaForm.description,
-                  durationDays: Number(metaForm.durationDays) || 21,
-                  price: Number(metaForm.price) || 0,
+                  category: metaForm.category,
+                  coachName: metaForm.coachName,
+                  coachTitle: metaForm.coachTitle || null,
+                  recommendedFor: metaForm.recommendedFor,
+                  durationDays: Number(metaForm.durationDays) || 7,
+                  actualPrice: Number(metaForm.actualPrice) || 0,
+                  discountPercentage: Number(metaForm.discountPercentage) || 0,
+                  price: calculatedFinalPrice,
                   maxQuota: Number(metaForm.maxQuota) || 35,
                   communityLink: metaForm.communityLink || null,
                   locationType: metaForm.locationType,
@@ -789,22 +1019,39 @@ export function AdminClient({
                   virtualFallbackAvailable: metaForm.virtualFallbackAvailable,
                   startDate: metaForm.startDate,
                   endDate: metaForm.endDate,
+                  registrationOpenDate:
+                    metaForm.isTbaOpenDate || !metaForm.registrationOpenDate
+                      ? null
+                      : metaForm.registrationOpenDate,
                   registrationDeadline: metaForm.registrationDeadline,
+                  status: metaForm.status,
+                  // If days were truncated because duration was reduced:
+                  days: p.days.filter((d) => d.dayNumber <= (Number(metaForm.durationDays) || 7)),
                 }
               : p
           )
         );
         setFeedback({
           type: "success",
-          text: "Program information updated.",
+          text: `Header information updated for "${metaForm.title}".`,
         });
+        setMetaError(null);
         router.refresh();
       } else {
+        const errMsg = res.message || "Unable to update program info.";
+        setMetaError(errMsg);
         setFeedback({
           type: "error",
-          text: res.message || "Unable to update program info.",
+          text: errMsg,
         });
       }
+    } catch {
+      const netErr = "Network error while updating program info.";
+      setMetaError(netErr);
+      setFeedback({
+        type: "error",
+        text: netErr,
+      });
     } finally {
       setSavingMeta(false);
     }
@@ -817,7 +1064,7 @@ export function AdminClient({
       return;
     }
     if (!createForm.coachName.trim()) {
-      setCreateError("Please provide the Lead Coach name.");
+      setCreateError("Please select a Lead Coach.");
       return;
     }
     if (createForm.description.trim().length < 10) {
@@ -828,14 +1075,23 @@ export function AdminClient({
     setCreatingLoading(true);
     setCreateError(null);
 
+    const calculatedFinalPrice = Math.max(
+      0,
+      Math.round((Number(createForm.actualPrice) || 0) * (1 - (Number(createForm.discountPercentage) || 0) / 100))
+    );
+
     try {
       const res = await wellnessAdminCreateProgram({
         title: createForm.title.trim(),
-        coachName: createForm.coachName.trim(),
-        recommendedFor: createForm.recommendedFor.trim(),
         description: createForm.description.trim(),
-        durationDays: Number(createForm.durationDays) || 21,
-        price: Number(createForm.price) || 0,
+        category: createForm.category?.trim() || "Pilates",
+        coachName: createForm.coachName.trim(),
+        coachTitle: createForm.coachTitle?.trim() || undefined,
+        recommendedFor: createForm.recommendedFor.trim(),
+        durationDays: Number(createForm.durationDays) || 7,
+        actualPrice: Number(createForm.actualPrice) || 0,
+        discountPercentage: Number(createForm.discountPercentage) || 0,
+        price: calculatedFinalPrice,
         maxQuota: Number(createForm.maxQuota) || 35,
         communityLink: createForm.communityLink.trim() || undefined,
         locationType: createForm.locationType,
@@ -844,41 +1100,32 @@ export function AdminClient({
         virtualFallbackAvailable: createForm.virtualFallbackAvailable,
         startDate: new Date(createForm.startDate),
         endDate: new Date(createForm.endDate),
+        registrationOpenDate:
+          createForm.isTbaOpenDate || !createForm.registrationOpenDate
+            ? null
+            : new Date(createForm.registrationOpenDate),
         registrationDeadline: new Date(createForm.registrationDeadline),
+        status: "DRAFT",
+        isPublished: false,
         days: [],
       });
 
       if (res.success && res.data) {
-        const created = res.data as {
-          id: string;
-          title: string;
-          slug: string;
-          description: string;
-          recommendedFor: string;
-          coachName: string;
-          durationDays: number;
-          price: number;
-          maxQuota: number;
-          communityLink: string | null;
-          locationType?: string | null;
-          city?: string | null;
-          venueAddress?: string | null;
-          virtualFallbackAvailable?: boolean | null;
-          startDate: Date | string;
-          endDate: Date | string;
-          registrationDeadline: Date | string;
-          isPublished: boolean;
-        };
+        const created = res.data as any;
 
         const formattedNewProgram: AdminProgram = {
           id: created.id,
           title: created.title,
           slug: created.slug,
           description: created.description,
+          category: created.category || createForm.category,
           recommendedFor: created.recommendedFor,
           coachName: created.coachName,
+          coachTitle: created.coachTitle || createForm.coachTitle,
           durationDays: created.durationDays,
-          price: created.price,
+          actualPrice: created.actualPrice ?? createForm.actualPrice,
+          discountPercentage: created.discountPercentage ?? createForm.discountPercentage,
+          price: created.price ?? calculatedFinalPrice,
           maxQuota: created.maxQuota,
           communityLink: created.communityLink,
           locationType: created.locationType || createForm.locationType,
@@ -887,7 +1134,9 @@ export function AdminClient({
           virtualFallbackAvailable: created.virtualFallbackAvailable ?? createForm.virtualFallbackAvailable,
           startDate: created.startDate,
           endDate: created.endDate,
+          registrationOpenDate: created.registrationOpenDate || null,
           registrationDeadline: created.registrationDeadline,
+          status: "DRAFT",
           isPublished: false,
           dayCount: 0,
           activeSubscribers: 0,
@@ -900,7 +1149,7 @@ export function AdminClient({
         openProgramDetail(formattedNewProgram, 1);
         setFeedback({
           type: "success",
-          text: `Program "${formattedNewProgram.title}" created. You can now plan the daily schedule.`,
+          text: `Draft cohort "${formattedNewProgram.title}" created. You can now build daily routines or publish when ready.`,
         });
         router.refresh();
       } else {
@@ -910,6 +1159,129 @@ export function AdminClient({
       setCreateError("An unexpected error occurred while creating program.");
     } finally {
       setCreatingLoading(false);
+    }
+  };
+
+  // Master Data action handlers
+  const handleAddCoach = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCoachName.trim() || !newCoachTitle.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessCreateMasterCoach({
+        name: newCoachName.trim(),
+        title: newCoachTitle.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          coaches: [...prev.coaches, res.data as any],
+        }));
+        setNewCoachName("");
+        setNewCoachTitle("");
+        setFeedback({ type: "success", text: `Coach added to master records.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to add coach." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleDeleteCoach = async (id: string, name: string) => {
+    if (!confirm(`Delete coach "${name}" from master records?`)) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessDeleteMasterCoach(id);
+      if (res.success) {
+        setMasterData((prev) => ({
+          ...prev,
+          coaches: prev.coaches.filter((c) => c.id !== id),
+        }));
+        setFeedback({ type: "success", text: `Coach "${name}" deleted.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to delete coach." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleAddAudience = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAudienceName.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessCreateMasterTargetAudience(newAudienceName.trim());
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          targetAudiences: [...prev.targetAudiences, res.data as any],
+        }));
+        setNewAudienceName("");
+        setFeedback({ type: "success", text: `Target audience added.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to add target audience." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleDeleteAudience = async (id: string, name: string) => {
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessDeleteMasterTargetAudience(id);
+      if (res.success) {
+        setMasterData((prev) => ({
+          ...prev,
+          targetAudiences: prev.targetAudiences.filter((a) => a.id !== id),
+        }));
+        setFeedback({ type: "success", text: `Target audience "${name}" removed.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to delete audience." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessCreateMasterCategory(newCategoryName.trim());
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          categories: [...prev.categories, res.data as any],
+        }));
+        setNewCategoryName("");
+        setFeedback({ type: "success", text: `Category added.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to add category." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessDeleteMasterCategory(id);
+      if (res.success) {
+        setMasterData((prev) => ({
+          ...prev,
+          categories: prev.categories.filter((c) => c.id !== id),
+        }));
+        setFeedback({ type: "success", text: `Category "${name}" removed.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to delete category." });
+      }
+    } finally {
+      setMasterActionLoading(false);
     }
   };
 
@@ -1026,6 +1398,47 @@ export function AdminClient({
           text: res.message || "Failed to update publication status.",
         });
       }
+    } finally {
+      setPublishingId(null);
+    }
+  };
+
+  const handleSetProgramStatus = async (
+    progId: string,
+    newStatus: "NOT_SHOW" | "COMING_SOON" | "ACTIVE"
+  ) => {
+    setPublishingId(progId);
+    setFeedback(null);
+    try {
+      const res = await wellnessAdminSetProgramStatus(progId, newStatus);
+      if (res.success && res.data) {
+        setPrograms((prev) =>
+          prev.map((p) =>
+            p.id === progId
+              ? {
+                  ...p,
+                  status: res.data!.status as "NOT_SHOW" | "COMING_SOON" | "ACTIVE",
+                  isPublished: res.data!.isPublished,
+                }
+              : p
+          )
+        );
+        setFeedback({
+          type: "success",
+          text: res.message || "Program status successfully updated.",
+        });
+        router.refresh();
+      } else {
+        setFeedback({
+          type: "error",
+          text: res.message || "Failed to update program status.",
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: "error",
+        text: err?.message || "An unexpected system error occurred while updating status.",
+      });
     } finally {
       setPublishingId(null);
     }
@@ -1237,7 +1650,7 @@ export function AdminClient({
       p.title.toLowerCase().includes(programSearch.toLowerCase()) ||
       p.coachName.toLowerCase().includes(programSearch.toLowerCase());
     if (!matchesSearch) return false;
-    if (programFilter === "LIVE") return p.isPublished;
+    if (programFilter === "PUBLISHED") return p.isPublished;
     if (programFilter === "DRAFT") return !p.isPublished;
     return true;
   });
@@ -1292,30 +1705,34 @@ export function AdminClient({
   );
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row text-xs">
+    <div className="min-h-screen flex flex-col lg:flex-row text-xs font-sans selection:bg-zinc-800 selection:text-white bg-zinc-50/60 dark:bg-zinc-950">
       {/* ================================================================= */}
-      {/* STICKY GLASSMORPHIC LEFT SIDEBAR                                  */}
+      {/* STICKY MINIMALIST SIDEBAR                                         */}
       {/* ================================================================= */}
-      <aside className="w-full lg:w-60 lg:shrink-0 lg:sticky lg:top-0 lg:h-screen glass-panel border-b lg:border-b-0 lg:border-r border-white/70 dark:border-white/10 flex flex-col justify-between p-6 z-30">
-        <div className="space-y-8">
+      <aside className="w-full lg:w-64 lg:shrink-0 lg:sticky lg:top-0 lg:h-screen bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xl border-b lg:border-b-0 lg:border-r border-zinc-200/80 dark:border-white/10 flex flex-col justify-between p-6 z-30">
+        <div className="space-y-7">
           {/* Brand Header */}
-          <div className="flex items-center justify-between px-2">
+          <div className="flex items-center justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-                <h1 className="text-[11px] font-bold uppercase tracking-[0.22em] text-zinc-900 dark:text-white whitespace-nowrap">
-                  Wellness
-                </h1>
+                <Link href="/" className="group">
+                  <h1 className="font-geometric font-extralight text-sm tracking-[0.34em] text-zinc-900 dark:text-white uppercase">
+                    BMS
+                  </h1>
+                </Link>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-zinc-400">
+                  Console
+                </span>
               </div>
-              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 truncate">
-                {currentAdmin?.fullName || "Admin Console"}
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate font-normal">
+                {currentAdmin?.fullName || "Sanctuary Admin"}
               </p>
             </div>
             <ThemeToggle />
           </div>
 
           {/* Navigation Menu */}
-          <nav className="space-y-1.5">
+          <nav className="space-y-1">
             <button
               type="button"
               onClick={() => {
@@ -1324,18 +1741,15 @@ export function AdminClient({
                 setIsCreatingProgram(false);
                 setFeedback(null);
               }}
-              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-medium flex items-center justify-between transition whitespace-nowrap ${
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition ${
                 activeMenu === "dashboard"
-                  ? "chrome-button"
-                  : "text-zinc-600 dark:text-zinc-400 hover:bg-white/40 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
                 <span>Dashboard</span>
-              </span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-orange-500/15 text-orange-600 dark:text-orange-400">
-                Hub
               </span>
             </button>
 
@@ -1347,17 +1761,40 @@ export function AdminClient({
                 setIsCreatingProgram(false);
                 setFeedback(null);
               }}
-              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-medium flex items-center justify-between transition whitespace-nowrap ${
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition ${
                 activeMenu === "programs"
-                  ? "chrome-button"
-                  : "text-zinc-600 dark:text-zinc-400 hover:bg-white/40 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <Layers className="w-3.5 h-3.5 shrink-0" />
-                <span>Programs</span>
+                <Layers className="w-4 h-4 shrink-0" />
+                <span>Cohorts</span>
               </span>
-              <span className="text-[11px] opacity-70">{programs.length}</span>
+              <span className="text-[11px] font-mono opacity-70">{programs.length}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveMenu("master");
+                setSelectedProgramId(null);
+                setIsCreatingProgram(false);
+                setFeedback(null);
+              }}
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition ${
+                activeMenu === "master"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <Tag className="w-4 h-4 shrink-0" />
+                <span>Master Data</span>
+              </span>
+              <span className="text-[11px] font-mono opacity-70">
+                {masterData.coaches.length + masterData.targetAudiences.length + masterData.categories.length}
+              </span>
             </button>
 
             <button
@@ -1368,17 +1805,17 @@ export function AdminClient({
                 setIsCreatingProgram(false);
                 setFeedback(null);
               }}
-              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-medium flex items-center justify-between transition whitespace-nowrap ${
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition ${
                 activeMenu === "members"
-                  ? "chrome-button"
-                  : "text-zinc-600 dark:text-zinc-400 hover:bg-white/40 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <Users className="w-3.5 h-3.5 shrink-0" />
+                <Users className="w-4 h-4 shrink-0" />
                 <span>Customers</span>
               </span>
-              <span className="text-[11px] opacity-70">{users.length}</span>
+              <span className="text-[11px] font-mono opacity-70">{users.length}</span>
             </button>
 
             <button
@@ -1389,32 +1826,30 @@ export function AdminClient({
                 setIsCreatingProgram(false);
                 setFeedback(null);
               }}
-              className={`w-full px-3.5 py-2.5 rounded-2xl text-xs font-medium flex items-center justify-between transition whitespace-nowrap ${
+              className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-between transition ${
                 activeMenu === "payments"
-                  ? "chrome-button"
-                  : "text-zinc-600 dark:text-zinc-400 hover:bg-white/40 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
+                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                  : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >
               <span className="flex items-center gap-2.5">
-                <QrCode className="w-3.5 h-3.5 shrink-0" />
+                <QrCode className="w-4 h-4 shrink-0" />
                 <span>Payments</span>
               </span>
-              {pendingEnrollments.length > 0 ? (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500 text-white">
+              {pendingEnrollments.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-zinc-200 dark:bg-white/20 text-zinc-900 dark:text-white">
                   {pendingEnrollments.length}
                 </span>
-              ) : (
-                <span className="text-[11px] opacity-70">0</span>
               )}
             </button>
           </nav>
         </div>
 
         {/* Bottom Actions */}
-        <div className="pt-5 border-t border-zinc-900/[0.06] dark:border-white/10 space-y-1.5">
+        <div className="pt-6 border-t border-zinc-200/80 dark:border-white/10 space-y-1">
           <Link
             href="/dashboard"
-            className="w-full px-3.5 py-2 rounded-xl text-[11px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5 flex items-center justify-between transition whitespace-nowrap"
+            className="w-full px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 flex items-center justify-between transition"
           >
             <span>Member View</span>
             <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
@@ -1423,7 +1858,7 @@ export function AdminClient({
           <button
             type="button"
             onClick={handleSignOut}
-            className="w-full px-3.5 py-2 rounded-xl text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5 flex items-center gap-2 transition whitespace-nowrap"
+            className="w-full px-3.5 py-2 rounded-xl text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 flex items-center gap-2 transition"
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" />
             <span>Sign Out</span>
@@ -1434,55 +1869,55 @@ export function AdminClient({
       {/* ================================================================= */}
       {/* MAIN WORKSPACE                                                    */}
       {/* ================================================================= */}
-      <main className="flex-1 min-w-0 p-6 sm:p-8 lg:p-10 max-w-6xl mx-auto w-full space-y-6">
-        {/* CONTEXTUAL TOP WIDGETS (Tailored to the active menu) */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      <main className="flex-1 min-w-0 p-6 sm:p-8 lg:p-10 max-w-6xl mx-auto w-full space-y-8">
+        {/* CONTEXTUAL TOP WIDGETS (2 per row for generous negative space) */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           {activeMenu === "dashboard" && (
             <>
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Total Programs
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {programs.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   {liveProgramsCount} published • {draftProgramsCount} drafts
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Total Customers
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {users.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   {activeUsersCount} active • {suspendedUsersCount} suspended
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Pending Approvals
                 </span>
-                <div className="text-2xl font-light tracking-tight text-orange-600 dark:text-orange-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {pendingEnrollments.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                  Rp {pendingRevenue.toLocaleString("id-ID")} awaiting review
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal font-mono">
+                  Rp {pendingRevenue.toLocaleString("id-ID")} pending
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Verified Revenue
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white font-mono my-1 truncate">
                   Rp {approvedRevenue.toLocaleString("id-ID")}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   {approvedEnrollments.length} enrolled members
                 </p>
               </div>
@@ -1491,51 +1926,103 @@ export function AdminClient({
 
           {activeMenu === "programs" && (
             <>
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Total Programs
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {programs.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                  Cohort curriculums
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  Curated cohort protocols
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Published Cohorts
                 </span>
-                <div className="text-2xl font-light tracking-tight text-emerald-600 dark:text-emerald-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {liveProgramsCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Live for enrollments
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Draft Cohorts
                 </span>
-                <div className="text-2xl font-light tracking-tight text-orange-600 dark:text-orange-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-zinc-400 my-1">
                   {draftProgramsCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                  Curriculum in preparation
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  In preparation
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Curriculum Ready
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {curriculumReadyCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                  {programs.length > 0 ? Math.round((curriculumReadyCount / programs.length) * 100) : 0}% fully scheduled
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  {programs.length > 0 ? Math.round((curriculumReadyCount / programs.length) * 100) : 0}% scheduled
+                </p>
+              </div>
+            </>
+          )}
+
+          {activeMenu === "master" && (
+            <>
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
+                  Master Coaches
+                </span>
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
+                  {masterData.coaches.length}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  Active instructors
+                </p>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
+                  Target Audiences
+                </span>
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
+                  {masterData.targetAudiences.length}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  Recommended segments
+                </p>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
+                  Categories
+                </span>
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
+                  {masterData.categories.length}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  Taxonomies
+                </p>
+              </div>
+
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
+                  Active Cohorts Linked
+                </span>
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
+                  {programs.length}
+                </div>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                  Using master profiles
                 </p>
               </div>
             </>
@@ -1543,50 +2030,50 @@ export function AdminClient({
 
           {activeMenu === "members" && (
             <>
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Total Customers
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {users.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Registered accounts
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Active Standing
                 </span>
-                <div className="text-2xl font-light tracking-tight text-emerald-600 dark:text-emerald-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-zinc-100 my-1">
                   {activeUsersCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Full platform access
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Suspended Accounts
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-400 my-1">
                   {suspendedUsersCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Access restricted
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Enrolled Customers
                 </span>
-                <div className="text-2xl font-light tracking-tight text-orange-600 dark:text-orange-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {enrolledUsersCount}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Active in cohort
                 </p>
               </div>
@@ -1595,50 +2082,50 @@ export function AdminClient({
 
           {activeMenu === "payments" && (
             <>
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-orange-600 dark:text-orange-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Pending Approvals
                 </span>
-                <div className="text-2xl font-light tracking-tight text-orange-600 dark:text-orange-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {pendingEnrollments.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Awaiting review
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-600 dark:text-emerald-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Approved Orders
                 </span>
-                <div className="text-2xl font-light tracking-tight text-emerald-600 dark:text-emerald-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {approvedEnrollments.length}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Verified payments
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Settled Revenue
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white font-mono my-1 truncate">
                   Rp {approvedRevenue.toLocaleString("id-ID")}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Tuition collected
                 </p>
               </div>
 
-              <div className="glass-panel rounded-3xl p-5 space-y-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block whitespace-nowrap">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
+                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
                   Pending Volume
                 </span>
-                <div className="text-2xl font-light tracking-tight text-zinc-500 dark:text-zinc-400">
+                <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-500 dark:text-zinc-400 font-mono my-1 truncate">
                   Rp {pendingRevenue.toLocaleString("id-ID")}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
                   Unverified balance
                 </p>
               </div>
@@ -1648,19 +2135,19 @@ export function AdminClient({
 
         {/* Feedback Banner */}
         {feedback && (
-          <div className="glass-panel rounded-2xl px-5 py-3.5 text-xs flex items-center justify-between gap-3 border-orange-500/30">
+          <div className="bg-white dark:bg-zinc-900/90 rounded-2xl px-5 py-3.5 text-xs flex items-center justify-between gap-3 border border-zinc-200/80 dark:border-white/10 shadow-xs">
             <span className="flex items-center gap-2 text-zinc-800 dark:text-zinc-200">
               {feedback.type === "success" ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-zinc-800 dark:text-zinc-200 shrink-0" />
               ) : (
-                <AlertCircle className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                <AlertCircle className="w-4 h-4 text-zinc-500 shrink-0" />
               )}
-              {feedback.text}
+              <span>{feedback.text}</span>
             </span>
             <button
               type="button"
               onClick={() => setFeedback(null)}
-              className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white whitespace-nowrap"
+              className="text-[11px] text-zinc-400 hover:text-zinc-900 dark:hover:text-white whitespace-nowrap"
             >
               Dismiss
             </button>
@@ -1673,15 +2160,15 @@ export function AdminClient({
         {activeMenu === "dashboard" && (
           <div className="space-y-6">
             {/* Quick Actions & Welcome Bar */}
-            <div className="glass-panel rounded-3xl p-6 sm:p-7 flex flex-col md:flex-row md:items-center justify-between gap-5">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-                  Executive Sanctuary Overview
+                <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 dark:text-zinc-500 block">
+                  Operations Cockpit
                 </span>
-                <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                  Operations & Cohort Cockpit
+                <h2 className="text-xl sm:text-2xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white">
+                  Platform Overview
                 </h2>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
                   Monitor live cohorts, verify member payments, and review customer standings in real time.
                 </p>
               </div>
@@ -1694,7 +2181,7 @@ export function AdminClient({
                     setSelectedProgramId(null);
                     setIsCreatingProgram(true);
                   }}
-                  className="px-4 py-2.5 rounded-2xl chrome-button text-xs font-medium flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 transition hover:opacity-90 shadow-xs whitespace-nowrap"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" />
                   <span>New Program</span>
@@ -1703,9 +2190,9 @@ export function AdminClient({
                 <button
                   type="button"
                   onClick={() => setActiveMenu("payments")}
-                  className="px-4 py-2.5 rounded-2xl glass-panel-subtle text-xs font-medium text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-white/15 bg-zinc-50 dark:bg-white/5 text-zinc-800 dark:text-zinc-200 text-xs font-medium flex items-center gap-1.5 transition hover:bg-zinc-100 dark:hover:bg-white/10 whitespace-nowrap"
                 >
-                  <QrCode className="w-3.5 h-3.5 shrink-0" />
+                  <QrCode className="w-3.5 h-3.5 shrink-0 text-zinc-400" />
                   <span>Pending Payments ({pendingEnrollments.length})</span>
                 </button>
               </div>
@@ -1714,24 +2201,24 @@ export function AdminClient({
             {/* 2-Column Split: Cohorts Health & Pending Approvals */}
             <div className="grid lg:grid-cols-2 gap-6">
               {/* Left Column: Cohorts Directory Snapshot */}
-              <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-                <div className="px-6 py-5 border-b border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden flex flex-col">
+                <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
+                    <Layers className="w-4 h-4 text-zinc-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
                       Active Programs ({programs.length})
                     </h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveMenu("programs")}
-                    className="text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1"
+                    className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition flex items-center gap-1"
                   >
                     View Directory <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
 
-                <div className="divide-y divide-zinc-900/[0.05] dark:divide-white/5 flex-1">
+                <div className="divide-y divide-zinc-100 dark:divide-white/5 flex-1">
                   {programs.length === 0 ? (
                     <div className="p-8 text-center text-xs text-zinc-500">
                       No programs created yet.
@@ -1752,15 +2239,15 @@ export function AdminClient({
                             setActiveMenu("programs");
                             openProgramDetail(prog);
                           }}
-                          className="p-5 hover:bg-white/30 dark:hover:bg-white/[0.02] cursor-pointer transition flex items-center justify-between gap-4"
+                          className="p-4 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] cursor-pointer transition flex items-center justify-between gap-4"
                         >
                           <div className="space-y-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <span
-                                className={`text-[9px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                                className={`text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                                   prog.isPublished
-                                    ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                                    : "bg-orange-500/15 text-orange-700 dark:text-orange-300"
+                                    ? "bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 border-zinc-200 dark:border-white/20 font-medium"
+                                    : "bg-zinc-50 text-zinc-500 border-zinc-200 dark:border-white/10"
                                 }`}
                               >
                                 {prog.isPublished ? "Published" : "Draft"}
@@ -1769,18 +2256,18 @@ export function AdminClient({
                                 {prog.coachName}
                               </span>
                             </div>
-                            <h4 className="text-xs font-semibold text-zinc-900 dark:text-white truncate">
+                            <h4 className="text-xs font-medium text-zinc-900 dark:text-white truncate">
                               {prog.title}
                             </h4>
-                            <div className="flex items-center gap-3 text-[10px] text-zinc-400">
-                              <span>{filledCount}/{targetDays} days scheduled ({pct}%)</span>
+                            <div className="flex items-center gap-3 text-[10px] text-zinc-400 font-mono">
+                              <span>{filledCount}/{targetDays} days ({pct}%)</span>
                               <span>•</span>
                               <span>{prog.durationDays} Days</span>
                             </div>
                           </div>
 
                           <div className="shrink-0 flex items-center gap-2">
-                            <span className="text-xs font-semibold text-zinc-900 dark:text-white whitespace-nowrap">
+                            <span className="text-xs font-mono font-medium text-zinc-900 dark:text-white whitespace-nowrap">
                               Rp {prog.price.toLocaleString("id-ID")}
                             </span>
                             <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
@@ -1793,31 +2280,31 @@ export function AdminClient({
               </div>
 
               {/* Right Column: Pending Payment Approvals */}
-              <div className="glass-panel rounded-3xl overflow-hidden flex flex-col">
-                <div className="px-6 py-5 border-b border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden flex flex-col">
+                <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <QrCode className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
+                    <QrCode className="w-4 h-4 text-zinc-400" />
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
                       Payment Queue ({pendingEnrollments.length})
                     </h3>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveMenu("payments")}
-                    className="text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1"
+                    className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition flex items-center gap-1"
                   >
                     View All <ArrowRight className="w-3 h-3" />
                   </button>
                 </div>
 
-                <div className="divide-y divide-zinc-900/[0.05] dark:divide-white/5 flex-1">
+                <div className="divide-y divide-zinc-100 dark:divide-white/5 flex-1">
                   {pendingEnrollments.length === 0 ? (
                     <div className="p-10 text-center space-y-2">
-                      <CheckCircle2 className="w-6 h-6 text-zinc-400 mx-auto" />
+                      <CheckCircle2 className="w-6 h-6 text-zinc-300 dark:text-zinc-600 mx-auto" />
                       <p className="text-xs font-medium text-zinc-900 dark:text-white">
                         All payments verified
                       </p>
-                      <p className="text-[11px] text-zinc-500">
+                      <p className="text-[11px] text-zinc-400">
                         Zero pending customer transactions.
                       </p>
                     </div>
@@ -1825,7 +2312,7 @@ export function AdminClient({
                     pendingEnrollments.slice(0, 4).map((item) => (
                       <div
                         key={item.id}
-                        className="p-5 flex items-center justify-between gap-4 hover:bg-white/30 dark:hover:bg-white/[0.02] transition"
+                        className="p-4 flex items-center justify-between gap-4 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                       >
                         <div className="space-y-0.5 min-w-0">
                           <p className="text-xs font-semibold text-zinc-900 dark:text-white truncate">
@@ -1834,7 +2321,7 @@ export function AdminClient({
                           <p className="text-[11px] text-zinc-500 truncate">
                             {item.programTitle}
                           </p>
-                          <p className="text-[11px] font-semibold text-orange-600 dark:text-orange-400">
+                          <p className="text-[11px] font-mono font-medium text-zinc-900 dark:text-white">
                             Rp {item.amountPaid.toLocaleString("id-ID")}
                           </p>
                         </div>
@@ -1843,13 +2330,13 @@ export function AdminClient({
                           type="button"
                           onClick={() => handleApprovePayment(item.id)}
                           disabled={approvingId === item.id}
-                          className="px-3.5 py-1.5 rounded-xl chrome-button text-[11px] font-medium flex items-center gap-1 shrink-0 whitespace-nowrap"
+                          className="px-3.5 py-1.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-[11px] font-medium flex items-center gap-1 shrink-0 whitespace-nowrap shadow-xs hover:opacity-90 transition"
                         >
                           {approvingId === item.id ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
                           ) : (
                             <>
-                              <CheckCircle2 className="w-3 h-3" />
+                              <CheckCircle2 className="w-3 h-3 text-zinc-200 dark:text-zinc-800" />
                               <span>Approve</span>
                             </>
                           )}
@@ -1862,28 +2349,28 @@ export function AdminClient({
             </div>
 
             {/* Customers Overview Snapshot */}
-            <div className="glass-panel rounded-3xl overflow-hidden">
-              <div className="px-6 py-5 border-b border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-orange-600 dark:text-orange-400" />
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
+                  <Users className="w-4 h-4 text-zinc-400" />
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
                     Recent Customer Accounts
                   </h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => setActiveMenu("members")}
-                  className="text-[11px] font-medium text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1"
+                  className="text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition flex items-center gap-1"
                 >
                   Manage All Customers ({users.length}) <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
 
-              <div className="divide-y divide-zinc-900/[0.05] dark:divide-white/5">
+              <div className="divide-y divide-zinc-100 dark:divide-white/5">
                 {users.slice(0, 5).map((u) => (
                   <div
                     key={u.id}
-                    className="p-5 flex items-center justify-between gap-4 hover:bg-white/30 dark:hover:bg-white/[0.02] transition"
+                    className="p-4 flex items-center justify-between gap-4 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                   >
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
@@ -1893,8 +2380,8 @@ export function AdminClient({
                         <span
                           className={`text-[9px] uppercase px-2 py-0.5 rounded-full font-bold whitespace-nowrap ${
                             u.status === "ACTIVE"
-                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                              : "bg-zinc-500/10 text-zinc-500"
+                              ? "bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100"
+                              : "bg-zinc-100 text-zinc-500"
                           }`}
                         >
                           {u.status}
@@ -1923,7 +2410,7 @@ export function AdminClient({
         {activeMenu === "programs" && !selectedProgram && !isCreatingProgram && (
           <div className="space-y-6">
             {/* MIDDLE WIDGET: Search, Filter & New Program Button */}
-            <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -1934,13 +2421,13 @@ export function AdminClient({
                     setProgramPage(1);
                   }}
                   placeholder="Search programs..."
-                  className="w-full pl-9 pr-4 py-2 rounded-2xl glass-input text-xs"
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
                 />
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5">
-                <div className="flex items-center gap-1 p-1 rounded-2xl glass-panel-subtle">
-                  {(["ALL", "LIVE", "DRAFT"] as const).map((status) => (
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 flex-wrap">
+                  {(["ALL", "PUBLISHED", "DRAFT"] as const).map((status) => (
                     <button
                       key={status}
                       type="button"
@@ -1948,17 +2435,17 @@ export function AdminClient({
                         setProgramFilter(status);
                         setProgramPage(1);
                       }}
-                      className={`px-3.5 py-1.5 rounded-xl text-[11px] font-medium transition whitespace-nowrap ${
+                      className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition whitespace-nowrap ${
                         programFilter === status
-                          ? "chrome-button"
+                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
                           : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                       }`}
                     >
                       {status === "ALL"
-                        ? "All"
-                        : status === "LIVE"
+                        ? "All Cohorts"
+                        : status === "PUBLISHED"
                         ? "Published"
-                        : "Draft"}
+                        : "Draft (Unpublished)"}
                     </button>
                   ))}
                 </div>
@@ -1969,7 +2456,7 @@ export function AdminClient({
                     setIsCreatingProgram(true);
                     setSelectedProgramId(null);
                   }}
-                  className="px-4 py-2 rounded-2xl chrome-button text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap"
+                  className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap shadow-xs hover:opacity-90 transition"
                 >
                   <Plus className="w-3.5 h-3.5 shrink-0" /> New Program
                 </button>
@@ -1977,12 +2464,12 @@ export function AdminClient({
             </div>
 
             {/* BOTTOM WIDGET: Programs List + Pagination */}
-            <div className="glass-panel rounded-3xl overflow-hidden">
-              <div className="px-7 py-5 border-b border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between gap-4">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between gap-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white whitespace-nowrap">
                   Programs Directory
                 </h2>
-                <span className="text-[11px] text-zinc-500 dark:text-zinc-400 hidden sm:inline whitespace-nowrap">
+                <span className="text-[11px] text-zinc-400 hidden sm:inline whitespace-nowrap">
                   Select a program to manage details and daily schedule
                 </span>
               </div>
@@ -2007,71 +2494,98 @@ export function AdminClient({
                       Math.round((filledCount / targetDays) * 100)
                     );
 
+                    const isDraft = !prog.isPublished;
+                    const attendanceLabel =
+                      prog.locationType === "ONLINE"
+                        ? "Online"
+                        : prog.locationType === "ONSITE"
+                        ? `On-Site • ${prog.city || "Jakarta"}`
+                        : `Online + Onsite • ${prog.city || "Jakarta"}`;
+
                     return (
                       <div
                         key={prog.id}
-                        className="p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:bg-white/30 dark:hover:bg-white/[0.02] transition"
+                        className="p-6 sm:p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                       >
-                        <div className="space-y-2 max-w-xl">
-                          <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="space-y-3 min-w-0 flex-1">
+                          {/* Badges Row */}
+                          <div className="flex flex-wrap items-center gap-2">
                             <span
-                              className={`text-[10px] font-semibold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full whitespace-nowrap ${
-                                prog.isPublished
-                                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                                  : "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/25"
+                              className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1.5 font-semibold ${
+                                isDraft
+                                  ? "bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10"
+                                  : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
                               }`}
                             >
-                              {prog.isPublished ? "Published" : "Draft"}
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  isDraft ? "bg-zinc-400" : "bg-emerald-400"
+                                }`}
+                              />
+                              <span>{isDraft ? "Draft (Unpublished)" : "Published"}</span>
                             </span>
 
-                            {prog.locationType === "ONSITE" && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/25 whitespace-nowrap flex items-center gap-1">
-                                <MapPin className="w-2.5 h-2.5" /> On-Site • {prog.city || "Studio"}
+                            {prog.category && (
+                              <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
+                                {prog.category}
                               </span>
                             )}
 
-                            {prog.locationType === "HYBRID" && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/25 whitespace-nowrap flex items-center gap-1">
-                                <MapPin className="w-2.5 h-2.5" /> Hybrid • {prog.city || "Studio"}
-                              </span>
-                            )}
-
-                            {(!prog.locationType || prog.locationType === "ONLINE") && (
-                              <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/25 whitespace-nowrap">
-                                🌐 Online
-                              </span>
-                            )}
-
-                            <span className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                              {targetDays} Days • {prog.coachName}
-                            </span>
-                            <span className="text-[11px] font-medium text-zinc-800 dark:text-zinc-200 whitespace-nowrap">
-                              Rp {prog.price.toLocaleString("id-ID")}
+                            <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10 flex items-center gap-1">
+                              {attendanceLabel}
                             </span>
                           </div>
 
-                          <h3 className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">
-                            {prog.title}
-                          </h3>
+                          {/* Title & Description */}
+                          <div>
+                            <h3 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white">
+                              {prog.title}
+                            </h3>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed line-clamp-2 mt-1 max-w-2xl">
+                              {prog.description}
+                            </p>
+                          </div>
 
-                          <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed line-clamp-2">
-                            {prog.description}
-                          </p>
+                          {/* Meta Row */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400 pt-1">
+                            <span>
+                              <strong className="text-zinc-700 dark:text-zinc-300">{targetDays}</strong> Training Days
+                            </span>
+                            <span>&bull;</span>
+                            <span>
+                              Lead: <strong className="text-zinc-700 dark:text-zinc-300">{prog.coachName}</strong>
+                            </span>
+                            <span>&bull;</span>
+                            <div className="flex items-center gap-1.5 font-mono">
+                              <span className="font-semibold text-zinc-900 dark:text-white">
+                                Rp {prog.price.toLocaleString("id-ID")}
+                              </span>
+                              {prog.discountPercentage && prog.discountPercentage > 0 ? (
+                                <>
+                                  <span className="line-through text-zinc-400 text-[10px]">
+                                    Rp {(prog.actualPrice || prog.price).toLocaleString("id-ID")}
+                                  </span>
+                                  <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-zinc-200 dark:bg-white/20 text-zinc-900 dark:text-white">
+                                    -{prog.discountPercentage}%
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row lg:items-center gap-5 shrink-0">
-                          <div className="w-full sm:w-40 space-y-1.5">
-                            <div className="flex items-center justify-between text-[11px]">
-                              <span className="text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                                Schedule
-                              </span>
-                              <span className="font-medium text-zinc-900 dark:text-white whitespace-nowrap">
-                                {filledCount} / {targetDays} days
+                        {/* Right side: Completeness & Manage button */}
+                        <div className="flex flex-col sm:flex-row lg:items-center gap-6 shrink-0 lg:pl-6 lg:border-l border-zinc-100 dark:border-white/10">
+                          <div className="w-full sm:w-36 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-zinc-500 dark:text-zinc-400">Curriculum</span>
+                              <span className="font-mono font-medium text-zinc-900 dark:text-white">
+                                {filledCount}/{targetDays}d
                               </span>
                             </div>
-                            <div className="h-1.5 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
+                            <div className="h-1.5 w-full rounded-full bg-zinc-100 dark:bg-white/10 overflow-hidden">
                               <div
-                                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-zinc-900 dark:to-white transition-all duration-500"
+                                className="h-full rounded-full bg-zinc-900 dark:bg-white transition-all duration-300"
                                 style={{ width: `${progressPct}%` }}
                               />
                             </div>
@@ -2080,9 +2594,9 @@ export function AdminClient({
                           <button
                             type="button"
                             onClick={() => openProgramDetail(prog)}
-                            className="px-4 py-2.5 rounded-2xl chrome-button text-[11px] font-medium flex items-center justify-center gap-1.5 whitespace-nowrap"
+                            className="px-5 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center justify-center gap-2 hover:opacity-90 transition shadow-xs"
                           >
-                            <span>View Details</span>
+                            <span>Manage Program</span>
                             <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                           </button>
                         </div>
@@ -2105,217 +2619,535 @@ export function AdminClient({
         )}
 
         {/* ================================================================= */}
-        {/* VIEW 1B: CREATE NEW PROGRAM (IN-PAGE GLASS PANEL - SAME AS EDIT)  */}
+        {/* VIEW 1B: CREATE NEW PROGRAM                                       */}
         {/* ================================================================= */}
         {activeMenu === "programs" && isCreatingProgram && (
           <div className="space-y-6 animate-in fade-in duration-200">
             {/* Header with Back Button */}
-            <div className="glass-panel rounded-3xl p-7 space-y-3">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-7 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-3">
               <button
                 type="button"
                 onClick={() => setIsCreatingProgram(false)}
-                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition w-fit whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition w-fit whitespace-nowrap"
               >
                 <ArrowLeft className="w-3.5 h-3.5 shrink-0" /> Back to Programs
               </button>
               <div className="flex flex-wrap items-center gap-2.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/25">
-                  New Cohort
+                <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-medium">
+                  Draft Cohort
                 </span>
-                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  {createForm.durationDays} Days • Rp {createForm.price.toLocaleString("id-ID")}
+                <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
+                  {createForm.durationDays} Days • Net Rp{" "}
+                  {Math.max(
+                    0,
+                    Math.round(
+                      (Number(createForm.actualPrice) || 0) *
+                        (1 - (Number(createForm.discountPercentage) || 0) / 100)
+                    )
+                  ).toLocaleString("id-ID")}
                 </span>
               </div>
               <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">
-                Create New Program
+                Create Program Header
               </h2>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-3xl leading-relaxed">
-                Set up initial program parameters, cohort duration, and pricing. Once saved, you can immediately begin scheduling routines for each day.
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-2xl">
+                Configure program metadata, schedule duration, master coach, audience, and pricing. Saved as Draft until you choose to publish.
               </p>
             </div>
 
-            {/* Error banner if any */}
-            {createError && (
-              <div className="glass-panel rounded-2xl px-5 py-3.5 text-xs text-red-600 dark:text-red-400 border border-red-500/30">
-                {createError}
-              </div>
-            )}
-
-            {/* In-Page Form (Matches the exact styling of the Edit Info form!) */}
-            <form onSubmit={handleCreateProgramSubmit} className="glass-panel rounded-3xl p-7 space-y-6">
-              <div className="flex items-center justify-between border-b border-zinc-900/[0.06] dark:border-white/10 pb-4">
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
-                    Program Information
+            {/* Program Header Form */}
+            <form onSubmit={handleCreateProgramSubmit} className="bg-white dark:bg-zinc-900/90 rounded-2xl p-7 sm:p-10 space-y-10 border border-zinc-200/80 dark:border-white/10 shadow-xs">
+              
+              {/* 1. PROGRAM INFORMATION */}
+              <div className="space-y-5">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    1. Program Information
                   </h3>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Set general details, schedule dates, and tuition pricing
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    Basic cohort taxonomy, title, and public synopsis
                   </p>
                 </div>
+
+                <div className="grid sm:grid-cols-3 gap-5">
+                  <div className="sm:col-span-2 space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Program Title *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.title}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, title: e.target.value }))
+                      }
+                      placeholder="e.g. 7-Day Foundation Pilates & Core Flow"
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Category / Type *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveMenu("master")}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
+                      >
+                        + Manage
+                      </button>
+                    </div>
+                    <select
+                      value={createForm.category}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, category: e.target.value }))
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    >
+                      {masterData.categories.map((cat) => (
+                        <option key={cat.id} value={cat.name} className="dark:bg-zinc-900">
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-3 space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Short Description *
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      value={createForm.description}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, description: e.target.value }))
+                      }
+                      placeholder="Concise overview of curriculum rhythm, daily focus, and target transformation..."
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Program Title *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={createForm.title}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({ ...p, title: e.target.value }))
-                    }
-                    placeholder="e.g. 21-Day Core Mobility & Longevity Protocol"
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
+              {/* 2. COACH & RECOMMENDED FOR */}
+              <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    2. Coach &amp; Target Audience
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    Instructor assignment and target persona profiling
+                  </p>
                 </div>
 
-                <MultiTagInput
-                  label="Coach / Instructors *"
-                  subLabel="Press Enter to add multiple coaches"
-                  placeholder="e.g. Coach Marcus Vance"
-                  value={createForm.coachName}
-                  onChange={(val) => setCreateForm((p) => ({ ...p, coachName: val }))}
-                  icon={UserCheck}
-                  chipColor="orange"
-                  quickSuggestions={["Coach Marcus Vance", "Coach Sarah Jenkins", "Coach David Miller"]}
-                />
-
-                <div className="sm:col-span-2">
-                  <MultiTagInput
-                    label="Recommended For (Target Focus & Audience) *"
-                    subLabel="Press Enter to add multiple target items"
-                    placeholder="e.g. All Levels, Posture Correction"
-                    value={createForm.recommendedFor}
-                    onChange={(val) => setCreateForm((p) => ({ ...p, recommendedFor: val }))}
-                    icon={Sparkles}
-                    chipColor="zinc"
-                    quickSuggestions={[
-                      "All Levels",
-                      "Fat Loss & Core",
-                      "Mobility & Posture Recovery",
-                      "Desk Workers",
-                      "Strength & Tone",
-                      "Beginner Friendly",
-                    ]}
-                  />
-                </div>
-
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Description *
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    value={createForm.description}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({
-                        ...p,
-                        description: e.target.value,
-                      }))
-                    }
-                    placeholder="Describe what members will experience, how the daily rhythm works, and who this is for..."
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs leading-relaxed"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Duration (Days) *
-                    </label>
-                    <div className="flex items-center gap-1">
-                      {[7, 14, 21, 30].map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          onClick={() => {
-                            setCreateForm((prev) => ({
-                              ...prev,
-                              durationDays: d,
-                              endDate: computeEndDate(prev.startDate, d),
-                            }));
-                          }}
-                          className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition ${
-                            createForm.durationDays === d
-                              ? "chrome-button"
-                              : "glass-panel-subtle text-zinc-600 dark:text-zinc-400"
-                          }`}
-                        >
-                          {d}d
-                        </button>
+                <div className="grid sm:grid-cols-2 gap-5">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Lead Coach *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveMenu("master")}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
+                      >
+                        + Manage Coaches
+                      </button>
+                    </div>
+                    <select
+                      value={createForm.coachName}
+                      onChange={(e) => {
+                        const selected = masterData.coaches.find(
+                          (c) => c.name === e.target.value
+                        );
+                        setCreateForm((p) => ({
+                          ...p,
+                          coachName: e.target.value,
+                          coachTitle: selected?.title || p.coachTitle,
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    >
+                      {masterData.coaches.map((c) => (
+                        <option key={c.id} value={c.name} className="dark:bg-zinc-900">
+                          {c.name} — {c.title}
+                        </option>
                       ))}
+                    </select>
+                    {createForm.coachTitle && (
+                      <span className="text-[11px] text-zinc-500 block pt-0.5">
+                        Specialization: {createForm.coachTitle}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Target Audience (Recommended For) *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setActiveMenu("master")}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
+                      >
+                        + Manage Audience
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={createForm.recommendedFor}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, recommendedFor: e.target.value }))
+                      }
+                      placeholder="e.g. Desk Workers, Mom, Business Professional"
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                    {/* Quick selection chips from MasterTargetAudience */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {masterData.targetAudiences.map((aud) => {
+                        const isSelected = parseTagList(createForm.recommendedFor).some(
+                          (t) => t.toLowerCase() === aud.name.toLowerCase()
+                        );
+                        return (
+                          <button
+                            key={aud.id}
+                            type="button"
+                            onClick={() =>
+                              setCreateForm((p) => ({
+                                ...p,
+                                recommendedFor: toggleTagInList(aud.name, p.recommendedFor),
+                              }))
+                            }
+                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition ${
+                              isSelected
+                                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-transparent font-medium"
+                                : "bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 border-zinc-200/80 dark:border-white/10"
+                            }`}
+                          >
+                            {isSelected ? "✓ " : "+ "}
+                            {aud.name}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={90}
-                    required
-                    value={createForm.durationDays}
-                    onChange={(e) => {
-                      const d = Number(e.target.value) || 1;
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        durationDays: d,
-                        endDate: computeEndDate(prev.startDate, d),
-                      }));
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs font-semibold"
-                  />
                 </div>
+              </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Price (IDR) *
-                    </label>
-                    <span className="text-[11px] text-zinc-400">
-                      {createForm.price === 0
-                        ? "Free"
-                        : `Rp ${createForm.price.toLocaleString("id-ID")}`}
-                    </span>
+              {/* 3. SCHEDULE & REGISTRATION DATES */}
+              <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                      3. Schedule &amp; Registration Dates
+                    </h3>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                      Start, end, and cutoff timelines
+                    </p>
                   </div>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1000}
-                    required
-                    value={createForm.price}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({
-                        ...p,
-                        price: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
+                  <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-white font-medium">
+                    Duration: {createForm.durationDays} Days (Day 1 – Day {createForm.durationDays})
+                  </span>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Max Participants *
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    required
-                    value={createForm.maxQuota}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({
-                        ...p,
-                        maxQuota: Number(e.target.value),
-                      }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Start Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={createForm.startDate}
+                      onChange={(e) => {
+                        const newStart = e.target.value;
+                        const s = new Date(newStart);
+                        const en = new Date(createForm.endDate);
+                        const days =
+                          !isNaN(s.getTime()) && !isNaN(en.getTime()) && en >= s
+                            ? Math.max(1, Math.round((en.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                            : createForm.durationDays;
+                        setCreateForm((p) => ({
+                          ...p,
+                          startDate: newStart,
+                          durationDays: days,
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      End Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={createForm.endDate}
+                      onChange={(e) => {
+                        const newEnd = e.target.value;
+                        const s = new Date(createForm.startDate);
+                        const en = new Date(newEnd);
+                        const days =
+                          !isNaN(s.getTime()) && !isNaN(en.getTime()) && en >= s
+                            ? Math.max(1, Math.round((en.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                            : 1;
+                        setCreateForm((p) => ({
+                          ...p,
+                          endDate: newEnd,
+                          durationDays: days,
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Registration Open Date
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={createForm.isTbaOpenDate}
+                          onChange={(e) =>
+                            setCreateForm((p) => ({
+                              ...p,
+                              isTbaOpenDate: e.target.checked,
+                              registrationOpenDate: e.target.checked ? "" : p.registrationOpenDate,
+                            }))
+                          }
+                          className="rounded text-zinc-900 focus:ring-zinc-400 border-zinc-300 dark:border-zinc-700 bg-transparent"
+                        />
+                        <span>TBA</span>
+                      </label>
+                    </div>
+                    <input
+                      type="date"
+                      disabled={createForm.isTbaOpenDate}
+                      value={createForm.registrationOpenDate}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          registrationOpenDate: e.target.value,
+                          isTbaOpenDate: false,
+                        }))
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Registration Cutoff Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={createForm.registrationDeadline}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          registrationDeadline: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. ATTENDANCE MODE (Online, On-Site, Online + Onsite) */}
+              <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    4. Attendance Mode
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    Select delivery format and studio venue location if on-site
+                  </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Community Group Link
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    {[
+                      { key: "ONLINE", label: "Online" },
+                      { key: "ONSITE", label: "On-Site" },
+                      { key: "HYBRID", label: "Online + Onsite" },
+                    ].map((mode) => (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        onClick={() =>
+                          setCreateForm((p) => ({
+                            ...p,
+                            locationType: mode.key as "ONLINE" | "ONSITE" | "HYBRID",
+                          }))
+                        }
+                        className={`p-3.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition ${
+                          createForm.locationType === mode.key
+                            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs border-transparent"
+                            : "bg-zinc-50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {createForm.locationType !== "ONLINE" && (
+                    <div className="grid sm:grid-cols-2 gap-4 pt-1">
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          City / Metropolitan Area *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={createForm.city}
+                          onChange={(e) =>
+                            setCreateForm((p) => ({ ...p, city: e.target.value }))
+                          }
+                          placeholder="e.g. Jakarta Selatan"
+                          className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Studio Physical Venue Address
+                        </label>
+                        <input
+                          type="text"
+                          value={createForm.venueAddress}
+                          onChange={(e) =>
+                            setCreateForm((p) => ({ ...p, venueAddress: e.target.value }))
+                          }
+                          placeholder="e.g. The BMS Studio, Jl. Senopati No. 18"
+                          className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. PRICING & QUOTA */}
+              <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    5. Pricing &amp; Participant Quota
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    Tuition structure, promotional discount, and cohort seat cap
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Capacity (Seats) *
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      required
+                      value={createForm.maxQuota}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          maxQuota: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Actual Tuition (IDR) *
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      required
+                      value={createForm.actualPrice}
+                      onChange={(e) => {
+                        const actual = Number(e.target.value) || 0;
+                        const disc = Number(createForm.discountPercentage) || 0;
+                        setCreateForm((p) => ({
+                          ...p,
+                          actualPrice: actual,
+                          price: Math.max(0, Math.round(actual * (1 - disc / 100))),
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Discount (5% Multiples)
+                    </label>
+                    <select
+                      value={createForm.discountPercentage}
+                      onChange={(e) => {
+                        const disc = Number(e.target.value) || 0;
+                        const actual = Number(createForm.actualPrice) || 0;
+                        setCreateForm((p) => ({
+                          ...p,
+                          discountPercentage: disc,
+                          price: Math.max(0, Math.round(actual * (1 - disc / 100))),
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                    >
+                      {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((d) => (
+                        <option key={d} value={d} className="dark:bg-zinc-900">
+                          {d === 0 ? "0% (No Discount)" : `${d}% Off`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Final Calculated Tuition
+                    </label>
+                    <div className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-white/10 border border-zinc-200 dark:border-white/10 text-xs font-mono font-bold text-zinc-900 dark:text-white flex items-center justify-between">
+                      <span>Rp {createForm.price.toLocaleString("id-ID")}</span>
+                      {createForm.discountPercentage > 0 && (
+                        <span className="text-[10px] text-zinc-400 font-normal">
+                          -{createForm.discountPercentage}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. WHATSAPP COMMUNITY LINK */}
+              <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    6. WhatsApp Community Link
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                    Group invitation URL delivered to registered participants
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                    WhatsApp Group Invite URL
                   </label>
                   <input
                     type="url"
@@ -2327,175 +3159,236 @@ export function AdminClient({
                       }))
                     }
                     placeholder="https://chat.whatsapp.com/..."
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5 sm:col-span-2">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Program Format & Attendance Mode
-                  </label>
-                  <div className="grid sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCreateForm((p) => ({ ...p, locationType: "ONLINE" }))}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                        createForm.locationType === "ONLINE"
-                          ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                          : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                      }`}
-                    >
-                      🌐 100% Online
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCreateForm((p) => ({ ...p, locationType: "ONSITE" }))}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                        createForm.locationType === "ONSITE"
-                          ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                          : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                      }`}
-                    >
-                      📍 On-Site Session
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCreateForm((p) => ({ ...p, locationType: "HYBRID" }))}
-                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
-                        createForm.locationType === "HYBRID"
-                          ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                          : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                      }`}
-                    >
-                      ✨ Hybrid (Studio & Live)
-                    </button>
-                  </div>
-                </div>
-
-                {createForm.locationType !== "ONLINE" && (
-                  <>
-                    <div className="space-y-1.5">
-                      <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                        City / Location (e.g. Jakarta Selatan) *
-                      </label>
-                      <input
-                        type="text"
-                        value={createForm.city}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, city: e.target.value }))}
-                        placeholder="Jakarta Selatan, Bali, Surabaya..."
-                        className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                        Studio / Physical Venue Address
-                      </label>
-                      <input
-                        type="text"
-                        value={createForm.venueAddress}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, venueAddress: e.target.value }))}
-                        placeholder="The Sanctuary Studio, Senopati Lot 8"
-                        className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2 flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-                      <input
-                        type="checkbox"
-                        id="createVirtualFallback"
-                        checked={createForm.virtualFallbackAvailable}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, virtualFallbackAvailable: e.target.checked }))}
-                        className="rounded text-orange-500 focus:ring-orange-500"
-                      />
-                      <label htmlFor="createVirtualFallback" className="text-xs text-zinc-800 dark:text-zinc-200 cursor-pointer">
-                        Izinkan peserta luar kota mengikuti sesi on-site secara live streaming Zoom / Meet
-                      </label>
-                    </div>
-                  </>
-                )}
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Start Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={createForm.startDate}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setCreateForm((p) => ({
-                        ...p,
-                        startDate: newStart,
-                        endDate: computeEndDate(newStart, p.durationDays),
-                      }));
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Registration Deadline *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={createForm.registrationDeadline}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({
-                        ...p,
-                        registrationDeadline: e.target.value,
-                      }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    End Date (Auto-calculated)
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={createForm.endDate}
-                    onChange={(e) =>
-                      setCreateForm((p) => ({ ...p, endDate: e.target.value }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
+                    className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-zinc-900/[0.06] dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingProgram(false)}
-                  className="px-4 py-2 rounded-2xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 whitespace-nowrap"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={creatingLoading}
-                  className="px-5 py-2 rounded-2xl chrome-button text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap"
-                >
-                  {creatingLoading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                      <span>Saving Program...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-3.5 h-3.5 shrink-0" />
-                      <span>Save Draft & Plan Daily Schedule</span>
-                    </>
-                  )}
-                </button>
+              {/* SUBMIT / CANCEL ACTIONS */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 border-t border-zinc-100 dark:border-white/10">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Initial status is <strong>Draft (Unpublished)</strong>. Once created, you can configure daily schedules and publish whenever ready.
+                </span>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingProgram(false)}
+                    className="px-5 py-2.5 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={creatingLoading}
+                    className="px-6 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-2 hover:opacity-90 transition shadow-xs disabled:opacity-50"
+                  >
+                    {creatingLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>Create Cohort</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Validation error message directly below action buttons */}
+              {createError && (
+                <div className="p-4 rounded-xl text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 flex items-center gap-2 animate-in fade-in duration-200">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <span>{createError}</span>
+                </div>
+              )}
             </form>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* VIEW: MASTER DATA MANAGEMENT (Coaches, Audience, Categories)       */}
+        {/* ================================================================= */}
+        {activeMenu === "master" && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-7 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-2">
+              <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-medium">
+                Central Catalog
+              </span>
+              <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">
+                Master Data Management
+              </h2>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-2xl">
+                Manage coaches, target audience personas, and category types used when creating and configuring cohorts.
+              </p>
+            </div>
+
+            {/* 3-Column Master Grid */}
+            <div className="grid lg:grid-cols-3 gap-6">
+              
+              {/* 1. MASTER COACHES */}
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                    <UserCheck className="w-4 h-4 text-zinc-400" />
+                    <span>Master Coaches ({masterData.coaches.length})</span>
+                  </h3>
+                </div>
+
+                {/* Add Coach Form */}
+                <form onSubmit={handleAddCoach} className="space-y-2.5">
+                  <input
+                    type="text"
+                    required
+                    value={newCoachName}
+                    onChange={(e) => setNewCoachName(e.target.value)}
+                    placeholder="Coach Name (e.g. Coach Sarah Jenkins)"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                  />
+                  <input
+                    type="text"
+                    required
+                    value={newCoachTitle}
+                    onChange={(e) => setNewCoachTitle(e.target.value)}
+                    placeholder="Title (e.g. Senior Pilates Lead)"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={masterActionLoading}
+                    className="w-full py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center justify-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Coach</span>
+                  </button>
+                </form>
+
+                {/* List */}
+                <div className="divide-y divide-zinc-100 dark:divide-white/5 max-h-80 overflow-y-auto">
+                  {masterData.coaches.map((c) => (
+                    <div
+                      key={c.id}
+                      className="py-3 flex items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-zinc-900 dark:text-white truncate">
+                          {c.name}
+                        </p>
+                        <p className="text-[11px] text-zinc-500 truncate">{c.title}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCoach(c.id, c.name)}
+                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg transition"
+                        title="Delete coach"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. MASTER TARGET AUDIENCES */}
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-zinc-400" />
+                    <span>Target Audiences ({masterData.targetAudiences.length})</span>
+                  </h3>
+                </div>
+
+                {/* Add Audience Form */}
+                <form onSubmit={handleAddAudience} className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newAudienceName}
+                    onChange={(e) => setNewAudienceName(e.target.value)}
+                    placeholder="e.g. Business Woman"
+                    className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={masterActionLoading}
+                    className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1 transition disabled:opacity-50 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </form>
+
+                {/* Chips */}
+                <div className="flex flex-wrap gap-2 max-h-80 overflow-y-auto pt-1">
+                  {masterData.targetAudiences.map((aud) => (
+                    <span
+                      key={aud.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/5 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-white/10"
+                    >
+                      <span>{aud.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteAudience(aud.id, aud.name)}
+                        className="text-zinc-400 hover:text-red-500 transition"
+                        title="Remove tag"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* 3. MASTER CATEGORIES */}
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-zinc-400" />
+                    <span>Categories ({masterData.categories.length})</span>
+                  </h3>
+                </div>
+
+                {/* Add Category Form */}
+                <form onSubmit={handleAddCategory} className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g. Mobility"
+                    className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={masterActionLoading}
+                    className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1 transition disabled:opacity-50 shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add</span>
+                  </button>
+                </form>
+
+                {/* Chips */}
+                <div className="flex flex-wrap gap-2 max-h-80 overflow-y-auto pt-1">
+                  {masterData.categories.map((cat) => (
+                    <span
+                      key={cat.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/5 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-white/10"
+                    >
+                      <span>{cat.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        className="text-zinc-400 hover:text-red-500 transition"
+                        title="Remove category"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
@@ -2515,49 +3408,53 @@ export function AdminClient({
           return (
             <div className="space-y-6">
               {/* Program Detail Header Widget */}
-              <div className="glass-panel rounded-3xl p-7 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-7 sm:p-9 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-zinc-100 dark:border-white/10">
                   <button
                     type="button"
                     onClick={() => setSelectedProgramId(null)}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition w-fit whitespace-nowrap"
+                    className="inline-flex items-center gap-2 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition w-fit"
                   >
                     <ArrowLeft className="w-3.5 h-3.5 shrink-0" /> Back to Programs
                   </button>
 
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => handleInitiatePublish(selectedProgram)}
-                      disabled={publishingId === selectedProgram.id}
-                      className={`px-4 py-2 rounded-2xl text-[11px] font-medium flex items-center gap-1.5 transition whitespace-nowrap ${
-                        selectedProgram.isPublished
-                          ? "glass-panel-subtle text-zinc-800 dark:text-zinc-200"
-                          : allFilled
-                          ? "chrome-button shadow-sm"
-                          : "glass-panel-subtle text-amber-600 dark:text-amber-400 border border-amber-500/30"
-                      }`}
-                    >
-                      {publishingId === selectedProgram.id ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                      ) : selectedProgram.isPublished ? (
-                        <>
-                          <Unlock className="w-3.5 h-3.5 shrink-0" />
-                          <span>Unpublish Cohort</span>
-                        </>
-                      ) : (
-                        <>
-                          <Globe className="w-3.5 h-3.5 shrink-0" />
-                          <span>Publish Program</span>
-                        </>
-                      )}
-                    </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Publication & Status Action Button */}
+                    {!selectedProgram.isPublished ? (
+                      <button
+                        type="button"
+                        onClick={() => handleInitiatePublish(selectedProgram)}
+                        disabled={publishingId === selectedProgram.id}
+                        className="px-4 py-2 rounded-xl text-xs font-medium bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 hover:opacity-90 transition shadow-xs flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {publishingId === selectedProgram.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                        <span>Publish Cohort</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePublish(selectedProgram, false)}
+                        disabled={publishingId === selectedProgram.id}
+                        className="px-4 py-2 rounded-xl text-xs font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-white/10 dark:hover:bg-white/15 text-zinc-800 dark:text-zinc-200 transition border border-zinc-200 dark:border-white/10 flex items-center gap-2 disabled:opacity-50"
+                      >
+                        {publishingId === selectedProgram.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        )}
+                        <span>Unpublish (Revert to Draft)</span>
+                      </button>
+                    )}
 
                     <button
                       type="button"
                       onClick={() => handleDeleteProgram(selectedProgram)}
                       disabled={deletingProgId === selectedProgram.id}
-                      className="p-2 rounded-2xl glass-panel-subtle text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition"
+                      className="p-2 rounded-xl text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition border border-transparent hover:border-red-200 dark:hover:border-red-900/50"
                       title="Delete Program"
                     >
                       {deletingProgId === selectedProgram.id ? (
@@ -2569,51 +3466,183 @@ export function AdminClient({
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex flex-wrap items-center gap-2.5">
-                    <span
-                      className={`text-[10px] font-semibold uppercase tracking-[0.14em] px-2.5 py-0.5 rounded-full whitespace-nowrap ${
-                        selectedProgram.isPublished
-                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                          : "bg-orange-500/15 text-orange-700 dark:text-orange-300 border border-orange-500/25"
-                      }`}
-                    >
-                      {selectedProgram.isPublished ? "Published & Live" : "Draft"}
-                    </span>
-                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                      {selectedProgram.durationDays} Days • {selectedProgram.coachName} • Rp{" "}
-                      {selectedProgram.price.toLocaleString("id-ID")}
-                    </span>
-                  </div>
+                {(() => {
+                  const nowTime = new Date().getTime();
+                  const openTime = selectedProgram.registrationOpenDate
+                    ? new Date(selectedProgram.registrationOpenDate).getTime()
+                    : null;
+                  const deadlineTime = new Date(selectedProgram.registrationDeadline).getTime();
 
-                  <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">
-                    {selectedProgram.title}
-                  </h2>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 max-w-3xl leading-relaxed">
-                    {selectedProgram.description}
-                  </p>
-                </div>
+                  const isDraft = !selectedProgram.isPublished;
+                  const isComingSoon = !isDraft && (openTime === null || nowTime < openTime);
+                  const isClosed = !isDraft && nowTime > deadlineTime;
+                  const isJoinNow = !isDraft && !isComingSoon && !isClosed;
+
+                  const attendanceLabel =
+                    selectedProgram.locationType === "ONLINE"
+                      ? "Online"
+                      : selectedProgram.locationType === "ONSITE"
+                      ? `On-Site • ${selectedProgram.city || "Jakarta"}`
+                      : `Online + Onsite • ${selectedProgram.city || "Jakarta"}`;
+
+                  return (
+                    <div className="space-y-6">
+                      {/* Top Badges & Status */}
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span
+                          className={`text-[10px] uppercase tracking-wider px-3 py-1 rounded-full flex items-center gap-1.5 font-semibold ${
+                            isDraft
+                              ? "bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10"
+                              : isJoinNow
+                              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
+                              : isComingSoon
+                              ? "bg-zinc-200 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700"
+                              : "bg-zinc-100 text-zinc-500 dark:bg-white/5 dark:text-zinc-400"
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isDraft
+                                ? "bg-zinc-400"
+                                : isJoinNow
+                                ? "bg-emerald-400 animate-pulse"
+                                : isComingSoon
+                                ? "bg-amber-400"
+                                : "bg-zinc-400"
+                            }`}
+                          />
+                          <span>
+                            {isDraft
+                              ? "Draft (Unpublished)"
+                              : isJoinNow
+                              ? "Join Now (Published)"
+                              : isComingSoon
+                              ? "Coming Soon (Published)"
+                              : "Registration Closed"}
+                          </span>
+                        </span>
+
+                        <span className="text-[10px] font-medium px-3 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
+                          {selectedProgram.category || "Pilates"}
+                        </span>
+
+                        <span className="text-[10px] font-medium px-3 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
+                          {attendanceLabel}
+                        </span>
+                      </div>
+
+                      {/* Main Title & Description with Negative Space */}
+                      <div className="space-y-2 max-w-3xl">
+                        <h2 className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white leading-tight">
+                          {selectedProgram.title}
+                        </h2>
+                        <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed pt-1">
+                          {selectedProgram.description}
+                        </p>
+                      </div>
+
+                      {/* Key Metric Panels (2 per row for generous negative space) */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 space-y-1">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+                            Duration
+                          </span>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                            {selectedProgram.durationDays} Training Days
+                          </p>
+                          <span className="text-[11px] text-zinc-500 block">
+                            Starts {formatDate(selectedProgram.startDate)}
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 space-y-1">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+                            Tuition Fee
+                          </span>
+                          <p className="text-sm font-semibold font-mono text-zinc-900 dark:text-white">
+                            Rp {selectedProgram.price.toLocaleString("id-ID")}
+                          </p>
+                          {selectedProgram.discountPercentage && selectedProgram.discountPercentage > 0 ? (
+                            <span className="text-[11px] text-zinc-500 block">
+                              <span className="line-through">Rp {(selectedProgram.actualPrice || selectedProgram.price).toLocaleString("id-ID")}</span> (-{selectedProgram.discountPercentage}%)
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-zinc-500 block">Standard tuition</span>
+                          )}
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 space-y-1">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+                            Lead Coach
+                          </span>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">
+                            {selectedProgram.coachName}
+                          </p>
+                          <span className="text-[11px] text-zinc-500 truncate block">
+                            {selectedProgram.coachTitle || "Specialist Instructor"}
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 space-y-1">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
+                            Capacity &amp; Target
+                          </span>
+                          <p className="text-sm font-semibold text-zinc-900 dark:text-white">
+                            {selectedProgram.maxQuota} Seats
+                          </p>
+                          <span className="text-[11px] text-zinc-500 truncate block">
+                            {selectedProgram.recommendedFor || "All Levels"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Registration Timeline & Community Link */}
+                      <div className="p-4 rounded-xl bg-zinc-50/70 dark:bg-white/[0.03] border border-zinc-200/60 dark:border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs text-zinc-600 dark:text-zinc-400 font-mono">
+                        <div>
+                          <span className="text-zinc-400 uppercase text-[10px] tracking-wider mr-2">Registration:</span>
+                          <strong className="text-zinc-900 dark:text-white">
+                            {selectedProgram.registrationOpenDate ? formatDate(selectedProgram.registrationOpenDate) : "TBA"}
+                          </strong>{" "}
+                          &rarr;{" "}
+                          <strong className="text-zinc-900 dark:text-white">
+                            {formatDate(selectedProgram.registrationDeadline)}
+                          </strong>
+                        </div>
+                        {selectedProgram.communityLink && (
+                          <a
+                            href={selectedProgram.communityLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-zinc-900 dark:text-white hover:underline flex items-center gap-1.5 font-sans text-xs"
+                          >
+                            <span>WhatsApp Community</span> &rarr;
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* TWO-TAB NAVIGATOR: PROGRAM INFORMATION & DAILY SCHEDULE */}
-              <div className="flex items-center gap-2 p-1.5 rounded-2xl glass-panel-subtle w-fit">
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 w-fit">
                 <button
                   type="button"
                   onClick={() => setProgramDetailTab("info")}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
+                  className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition ${
                     programDetailTab === "info"
-                      ? "chrome-button shadow-sm"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
                       : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
                   {selectedProgram.isPublished ? (
-                    <Lock className="w-3.5 h-3.5 text-amber-500" />
+                    <Lock className="w-3.5 h-3.5 text-zinc-400" />
                   ) : (
                     <FileEdit className="w-3.5 h-3.5" />
                   )}
                   <span>Program Information</span>
                   {selectedProgram.isPublished && (
-                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold uppercase tracking-wider">
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-bold uppercase tracking-wider">
                       Locked
                     </span>
                   )}
@@ -2622,15 +3651,15 @@ export function AdminClient({
                 <button
                   type="button"
                   onClick={() => setProgramDetailTab("schedule")}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition ${
+                  className={`px-4 py-2 rounded-lg text-xs font-medium flex items-center gap-2 transition ${
                     programDetailTab === "schedule"
-                      ? "chrome-button shadow-sm"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
                       : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
                   <span>Daily Schedule</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full glass-panel-subtle font-medium">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-white/10 font-medium">
                     {filledCount}/{targetDays} days
                   </span>
                 </button>
@@ -2643,16 +3672,16 @@ export function AdminClient({
                 <div className="space-y-5 animate-in fade-in duration-200">
                   {/* Lock Warning Card if Program is Published */}
                   {selectedProgram.isPublished && (
-                    <div className="glass-panel rounded-3xl p-5 border border-amber-500/30 flex items-start gap-3.5 bg-amber-500/5">
-                      <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <div className="bg-zinc-50 dark:bg-zinc-900/60 rounded-2xl p-5 border border-zinc-200/80 dark:border-white/10 flex items-start gap-3.5">
+                      <Lock className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
                       <div className="space-y-1">
                         <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
                           <span>Cohort Terms Locked</span>
-                          <span className="text-[9px] uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold">
-                            Live & Active
+                          <span className="text-[9px] uppercase px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-bold">
+                            Live &amp; Active
                           </span>
                         </h4>
-                        <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
                           This program is currently published and open for member enrollments. Core parameters (pricing, duration, quota, and dates) are locked to protect paying customers and maintain cohort integrity. You must unpublish the program first if you need to modify core terms.
                         </p>
                       </div>
@@ -2665,366 +3694,548 @@ export function AdminClient({
                       if (selectedProgram.isPublished) return;
                       handleSaveMeta(selectedProgram);
                     }}
-                    className="glass-panel rounded-3xl p-7 space-y-6"
+                    className="bg-white dark:bg-zinc-900/90 rounded-2xl p-7 sm:p-10 space-y-10 border border-zinc-200/80 dark:border-white/10 shadow-xs"
                   >
-                    <div className="flex items-center justify-between border-b border-zinc-900/[0.06] dark:border-white/10 pb-4">
-                      <div>
-                        <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
-                          Program Information
+                    {/* SECTION 1: PROGRAM INFORMATION */}
+                    <div className="space-y-5">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                          1. Program Information
                         </h3>
-                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                          {selectedProgram.isPublished
-                            ? "Core terms are locked while this cohort is live"
-                            : "Update general details, schedule dates, and tuition pricing"}
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Basic cohort taxonomy, title, and public synopsis
                         </p>
+                      </div>
+
+                      <div className="space-y-5">
+                        <div className="grid sm:grid-cols-3 gap-5">
+                          <div className="sm:col-span-2 space-y-2">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Program Title *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.title}
+                              onChange={(e) =>
+                                setMetaForm((p) => ({ ...p, title: e.target.value }))
+                              }
+                              placeholder="e.g. 7-Day Hot Pilates Sculpt & Flow"
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Category / Discipline *
+                            </label>
+                            <select
+                              required
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.category}
+                              onChange={(e) =>
+                                setMetaForm((p) => ({ ...p, category: e.target.value }))
+                              }
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                            >
+                              {masterData.categories.map((cat) => (
+                                <option key={cat.id} value={cat.name} className="bg-white dark:bg-zinc-900">
+                                  {cat.name}
+                                </option>
+                              ))}
+                              {masterData.categories.length === 0 && (
+                                <option value="Pilates" className="bg-white dark:bg-zinc-900">
+                                  Pilates
+                                </option>
+                              )}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Short Description *
+                          </label>
+                          <textarea
+                            rows={3}
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.description}
+                            onChange={(e) =>
+                              setMetaForm((p) => ({
+                                ...p,
+                                description: e.target.value,
+                              }))
+                            }
+                            placeholder="Brief overview of curriculum objectives, daily cadence, and member outcomes..."
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                          />
+                        </div>
                       </div>
                     </div>
 
-                    <div className="grid sm:grid-cols-2 gap-5">
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Program Title *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.title}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({ ...p, title: e.target.value }))
-                          }
-                          placeholder="e.g. 21-Day Core Mobility & Longevity Protocol"
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                    {/* SECTION 2: COACH & RECOMMENDED FOR */}
+                    <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                          2. Coach &amp; Target Audience
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Assigned lead coach specialist and target demographic profiles
+                        </p>
                       </div>
 
-                      <MultiTagInput
-                        label="Coach / Instructors *"
-                        subLabel="Press Enter to add multiple coaches"
-                        placeholder="e.g. Coach Marcus Vance"
-                        disabled={selectedProgram.isPublished}
-                        value={metaForm.coachName}
-                        onChange={(val) => setMetaForm((p) => ({ ...p, coachName: val }))}
-                        icon={UserCheck}
-                        chipColor="orange"
-                        quickSuggestions={["Coach Marcus Vance", "Coach Sarah Jenkins", "Coach David Miller"]}
-                      />
-
-                      <div className="sm:col-span-2">
-                        <MultiTagInput
-                          label="Recommended For (Target Focus & Audience) *"
-                          subLabel="Press Enter to add multiple target items"
-                          placeholder="e.g. All Levels, Posture Correction"
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.recommendedFor}
-                          onChange={(val) => setMetaForm((p) => ({ ...p, recommendedFor: val }))}
-                          icon={Sparkles}
-                          chipColor="zinc"
-                          quickSuggestions={[
-                            "All Levels",
-                            "Fat Loss & Core",
-                            "Mobility & Posture Recovery",
-                            "Desk Workers",
-                            "Strength & Tone",
-                            "Beginner Friendly",
-                          ]}
-                        />
-                      </div>
-
-                      <div className="sm:col-span-2 space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Description *
-                        </label>
-                        <textarea
-                          rows={3}
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.description}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({
-                              ...p,
-                              description: e.target.value,
-                            }))
-                          }
-                          placeholder="Describe what members will experience, how the daily rhythm works, and who this is for..."
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                            Duration (Days) *
-                          </label>
-                          {!selectedProgram.isPublished && (
-                            <div className="flex items-center gap-1">
-                              {[7, 14, 21, 30].map((d) => (
-                                <button
-                                  key={d}
-                                  type="button"
-                                  onClick={() => {
-                                    setMetaForm((prev) => ({
-                                      ...prev,
-                                      durationDays: d,
-                                      endDate: computeEndDate(prev.startDate, d),
-                                    }));
-                                  }}
-                                  className={`px-2 py-0.5 rounded-lg text-[10px] font-medium transition ${
-                                    metaForm.durationDays === d
-                                      ? "chrome-button"
-                                      : "glass-panel-subtle text-zinc-600 dark:text-zinc-400"
-                                  }`}
-                                >
-                                  {d}d
-                                </button>
+                      <div className="space-y-5">
+                        <div className="grid sm:grid-cols-2 gap-5">
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Lead Coach *
+                            </label>
+                            <select
+                              required
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.coachName}
+                              onChange={(e) => {
+                                const selectedName = e.target.value;
+                                const matchedCoach = masterData.coaches.find((c) => c.name === selectedName);
+                                setMetaForm((p) => ({
+                                  ...p,
+                                  coachName: selectedName,
+                                  coachTitle: matchedCoach ? matchedCoach.title : p.coachTitle,
+                                }));
+                              }}
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                            >
+                              <option value="">Select from Master Coaches...</option>
+                              {masterData.coaches.map((c) => (
+                                <option key={c.id} value={c.name} className="bg-white dark:bg-zinc-900">
+                                  {c.name} ({c.title})
+                                </option>
                               ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Coach Title / Specialization
+                            </label>
+                            <input
+                              type="text"
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.coachTitle}
+                              onChange={(e) =>
+                                setMetaForm((p) => ({ ...p, coachTitle: e.target.value }))
+                              }
+                              placeholder="e.g. Master Pilates &amp; Mobility Specialist"
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2.5">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Recommended For (Target Audience) *
+                          </label>
+
+                          {!selectedProgram.isPublished && masterData.targetAudiences.length > 0 && (
+                            <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10">
+                              {masterData.targetAudiences.map((aud) => {
+                                const currentList = metaForm.recommendedFor
+                                  .split(",")
+                                  .map((x) => x.trim())
+                                  .filter(Boolean);
+                                const isSelected = currentList.includes(aud.name);
+                                return (
+                                  <button
+                                    key={aud.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setMetaForm((p) => ({
+                                        ...p,
+                                        recommendedFor: toggleTagInList(p.recommendedFor, aud.name),
+                                      }));
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                                      isSelected
+                                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                                        : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-white/10"
+                                    }`}
+                                  >
+                                    {isSelected ? "✓ " : "+ "}
+                                    {aud.name}
+                                  </button>
+                                );
+                              })}
                             </div>
                           )}
+
+                          <input
+                            type="text"
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.recommendedFor}
+                            onChange={(e) =>
+                              setMetaForm((p) => ({ ...p, recommendedFor: e.target.value }))
+                            }
+                            placeholder="e.g. Corporate Workers, Busy Mothers, Desk Professionals (comma separated)"
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                          />
                         </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={90}
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.durationDays}
-                          onChange={(e) => {
-                            const d = Number(e.target.value) || 1;
-                            setMetaForm((prev) => ({
-                              ...prev,
-                              durationDays: d,
-                              endDate: computeEndDate(prev.startDate, d),
-                            }));
-                          }}
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                      </div>
+                    </div>
+
+                    {/* SECTION 3: DATES & DURATION */}
+                    <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                            3. Schedule &amp; Duration
+                          </h3>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                            Program run window and registration cutoff timeline
+                          </p>
+                        </div>
+                        <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-white font-medium w-fit">
+                          Duration: {metaForm.durationDays} Days (Day 1 – Day {metaForm.durationDays})
+                        </span>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                            Price (IDR) *
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Start Date *
                           </label>
-                          <span className="text-[11px] text-zinc-400">
+                          <input
+                            type="date"
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.startDate}
+                            onChange={(e) => {
+                              const newStart = e.target.value;
+                              const s = new Date(newStart);
+                              const en = new Date(metaForm.endDate);
+                              const days =
+                                !isNaN(s.getTime()) && !isNaN(en.getTime()) && en >= s
+                                  ? Math.max(1, Math.round((en.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                                  : metaForm.durationDays;
+                              setMetaForm((p) => ({
+                                ...p,
+                                startDate: newStart,
+                                durationDays: days,
+                              }));
+                            }}
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            End Date *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.endDate}
+                            onChange={(e) => {
+                              const newEnd = e.target.value;
+                              const s = new Date(metaForm.startDate);
+                              const en = new Date(newEnd);
+                              const days =
+                                !isNaN(s.getTime()) && !isNaN(en.getTime()) && en >= s
+                                  ? Math.max(1, Math.round((en.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+                                  : 1;
+                              setMetaForm((p) => ({
+                                ...p,
+                                endDate: newEnd,
+                                durationDays: days,
+                              }));
+                            }}
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Registration Open Date
+                            </label>
+                            <label className="flex items-center gap-1.5 text-[11px] text-zinc-500 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                disabled={selectedProgram.isPublished}
+                                checked={metaForm.isTbaOpenDate}
+                                onChange={(e) =>
+                                  setMetaForm((p) => ({
+                                    ...p,
+                                    isTbaOpenDate: e.target.checked,
+                                    registrationOpenDate: e.target.checked ? "" : p.registrationOpenDate,
+                                  }))
+                                }
+                                className="rounded text-zinc-900 focus:ring-zinc-400 border-zinc-300 dark:border-zinc-700 bg-transparent disabled:opacity-60"
+                              />
+                              <span>TBA</span>
+                            </label>
+                          </div>
+                          <input
+                            type="date"
+                            disabled={metaForm.isTbaOpenDate || selectedProgram.isPublished}
+                            value={metaForm.registrationOpenDate}
+                            onChange={(e) =>
+                              setMetaForm((p) => ({
+                                ...p,
+                                registrationOpenDate: e.target.value,
+                                isTbaOpenDate: false,
+                              }))
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Registration Cutoff Date *
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.registrationDeadline}
+                            onChange={(e) =>
+                              setMetaForm((p) => ({
+                                ...p,
+                                registrationDeadline: e.target.value,
+                              }))
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                        Duration is automatically calculated from the date range ({metaForm.durationDays} days). If shortened, schedule entries beyond Day {metaForm.durationDays} will be trimmed. If extended, existing saved days are preserved.
+                      </div>
+                    </div>
+
+                    {/* SECTION 4: ATTENDANCE MODE */}
+                    <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                          4. Attendance Mode
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Delivery format (Online, On-Site studio, or Online + Onsite hybrid)
+                        </p>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="grid sm:grid-cols-3 gap-3">
+                          {[
+                            { key: "ONLINE", label: "Online" },
+                            { key: "ONSITE", label: "On-Site" },
+                            { key: "HYBRID", label: "Online + Onsite" },
+                          ].map((mode) => (
+                            <button
+                              key={mode.key}
+                              type="button"
+                              disabled={selectedProgram.isPublished}
+                              onClick={() =>
+                                setMetaForm((p) => ({
+                                  ...p,
+                                  locationType: mode.key as "ONLINE" | "ONSITE" | "HYBRID",
+                                }))
+                              }
+                              className={`p-3.5 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 transition disabled:opacity-60 disabled:cursor-not-allowed ${
+                                metaForm.locationType === mode.key
+                                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs border-transparent"
+                                  : "bg-zinc-50 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                              }`}
+                            >
+                              {mode.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {metaForm.locationType !== "ONLINE" && (
+                          <div className="grid sm:grid-cols-2 gap-5 pt-2">
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                City / Metropolitan Area *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                disabled={selectedProgram.isPublished}
+                                value={metaForm.city}
+                                onChange={(e) =>
+                                  setMetaForm((p) => ({ ...p, city: e.target.value }))
+                                }
+                                placeholder="e.g. Jakarta Selatan"
+                                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                                Studio Physical Venue Address
+                              </label>
+                              <input
+                                type="text"
+                                disabled={selectedProgram.isPublished}
+                                value={metaForm.venueAddress}
+                                onChange={(e) =>
+                                  setMetaForm((p) => ({ ...p, venueAddress: e.target.value }))
+                                }
+                                placeholder="e.g. The BMS Studio, Jl. Senopati No. 18"
+                                className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* SECTION 5: PRICING & QUOTA */}
+                    <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                          5. Pricing &amp; Participant Quota
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Enrollment capacity, base price, and optional discount incentive
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Participant Capacity (Seats) *
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.maxQuota}
+                            onChange={(e) =>
+                              setMetaForm((p) => ({
+                                ...p,
+                                maxQuota: Number(e.target.value),
+                              }))
+                            }
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Actual Tuition (IDR) *
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1000}
+                            required
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.actualPrice}
+                            onChange={(e) => {
+                              const actual = Number(e.target.value) || 0;
+                              const disc = Number(metaForm.discountPercentage) || 0;
+                              setMetaForm((p) => ({
+                                ...p,
+                                actualPrice: actual,
+                                price: Math.max(0, Math.round(actual * (1 - disc / 100))),
+                              }));
+                            }}
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Discount (5% Multiples)
+                          </label>
+                          <select
+                            disabled={selectedProgram.isPublished}
+                            value={metaForm.discountPercentage}
+                            onChange={(e) => {
+                              const disc = Number(e.target.value) || 0;
+                              const actual = Number(metaForm.actualPrice) || 0;
+                              setMetaForm((p) => ({
+                                ...p,
+                                discountPercentage: disc,
+                                price: Math.max(0, Math.round(actual * (1 - disc / 100))),
+                              }));
+                            }}
+                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          >
+                            {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50].map((pct) => (
+                              <option key={pct} value={pct} className="bg-white dark:bg-zinc-900">
+                                {pct === 0 ? "0% (No Discount)" : `${pct}% Off`}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Final Calculated Tuition
+                          </label>
+                          <div className="w-full px-4 py-2.5 rounded-xl bg-zinc-100 dark:bg-white/10 border border-zinc-200 dark:border-white/10 text-xs font-mono font-bold text-zinc-900 dark:text-white">
                             {metaForm.price === 0
                               ? "Free"
                               : `Rp ${metaForm.price.toLocaleString("id-ID")}`}
-                          </span>
+                          </div>
                         </div>
-                        <input
-                          type="number"
-                          min={0}
-                          step={1000}
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.price}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({
-                              ...p,
-                              price: Number(e.target.value),
-                            }))
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                      </div>
+                    </div>
+
+                    {/* SECTION 6: WHATSAPP COMMUNITY LINK */}
+                    <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                          6. Community &amp; Communication Link
+                        </h3>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
+                          Private WhatsApp community link provided to enrolled cohort members
+                        </p>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Max Participants *
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.maxQuota}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({
-                              ...p,
-                              maxQuota: Number(e.target.value),
-                            }))
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Community Group Link
+                      <div className="space-y-2">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          WhatsApp Community Group URL
                         </label>
                         <input
                           type="url"
                           disabled={selectedProgram.isPublished}
                           value={metaForm.communityLink}
                           onChange={(e) =>
-                            setMetaForm((p) => ({
-                              ...p,
-                              communityLink: e.target.value,
-                            }))
+                            setMetaForm((p) => ({ ...p, communityLink: e.target.value }))
                           }
                           placeholder="https://chat.whatsapp.com/..."
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Program Format & Attendance Mode
-                        </label>
-                        <div className="grid sm:grid-cols-3 gap-2">
-                          <button
-                            type="button"
-                            disabled={selectedProgram.isPublished}
-                            onClick={() => setMetaForm((p) => ({ ...p, locationType: "ONLINE" }))}
-                            className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                              metaForm.locationType === "ONLINE"
-                                ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                                : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                            }`}
-                          >
-                            🌐 100% Online
-                          </button>
-                          <button
-                            type="button"
-                            disabled={selectedProgram.isPublished}
-                            onClick={() => setMetaForm((p) => ({ ...p, locationType: "ONSITE" }))}
-                            className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                              metaForm.locationType === "ONSITE"
-                                ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                                : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                            }`}
-                          >
-                            📍 On-Site Session
-                          </button>
-                          <button
-                            type="button"
-                            disabled={selectedProgram.isPublished}
-                            onClick={() => setMetaForm((p) => ({ ...p, locationType: "HYBRID" }))}
-                            className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed ${
-                              metaForm.locationType === "HYBRID"
-                                ? "bg-orange-500/15 border-orange-500 text-orange-600 dark:text-orange-400 shadow-sm"
-                                : "glass-panel-subtle text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-                            }`}
-                          >
-                            ✨ Hybrid (Studio & Live)
-                          </button>
-                        </div>
-                      </div>
-
-                      {metaForm.locationType !== "ONLINE" && (
-                        <>
-                          <div className="space-y-1.5">
-                            <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                              City / Location (e.g. Jakarta Selatan) *
-                            </label>
-                            <input
-                              type="text"
-                              disabled={selectedProgram.isPublished}
-                              value={metaForm.city}
-                              onChange={(e) => setMetaForm((p) => ({ ...p, city: e.target.value }))}
-                              placeholder="Jakarta Selatan, Bali, Surabaya..."
-                              className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
-                            <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                              Studio / Physical Venue Address
-                            </label>
-                            <input
-                              type="text"
-                              disabled={selectedProgram.isPublished}
-                              value={metaForm.venueAddress}
-                              onChange={(e) => setMetaForm((p) => ({ ...p, venueAddress: e.target.value }))}
-                              placeholder="The Sanctuary Studio, Senopati Lot 8"
-                              className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-2 flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-                            <input
-                              type="checkbox"
-                              id="editVirtualFallback"
-                              disabled={selectedProgram.isPublished}
-                              checked={metaForm.virtualFallbackAvailable}
-                              onChange={(e) => setMetaForm((p) => ({ ...p, virtualFallbackAvailable: e.target.checked }))}
-                              className="rounded text-orange-500 focus:ring-orange-500 disabled:opacity-60"
-                            />
-                            <label htmlFor="editVirtualFallback" className="text-xs text-zinc-800 dark:text-zinc-200 cursor-pointer">
-                              Izinkan peserta luar kota mengikuti sesi on-site secara live streaming Zoom / Meet
-                            </label>
-                          </div>
-                        </>
-                      )}
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Start Date *
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.startDate}
-                          onChange={(e) => {
-                            const newStart = e.target.value;
-                            setMetaForm((p) => ({
-                              ...p,
-                              startDate: newStart,
-                              endDate: computeEndDate(newStart, p.durationDays),
-                            }));
-                          }}
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          Registration Deadline *
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.registrationDeadline}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({
-                              ...p,
-                              registrationDeadline: e.target.value,
-                            }))
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                          End Date (Auto-calculated)
-                        </label>
-                        <input
-                          type="date"
-                          required
-                          disabled={selectedProgram.isPublished}
-                          value={metaForm.endDate}
-                          onChange={(e) =>
-                            setMetaForm((p) => ({ ...p, endDate: e.target.value }))
-                          }
-                          className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                         />
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-zinc-900/[0.06] dark:border-white/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 border-t border-zinc-100 dark:border-white/10">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {selectedProgram.isPublished
+                          ? "Cohort is currently live. Unpublish to adjust core schedule, quota, or pricing parameters."
+                          : "Save updates to cohort information. All daily routines will adjust to new duration."}
+                      </span>
+
                       {selectedProgram.isPublished ? (
-                        <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-                          <Lock className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Terms locked while published. Unpublish cohort to make changes.</span>
+                        <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                          <Lock className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Terms locked while live</span>
                         </div>
                       ) : (
                         <button
                           type="submit"
                           disabled={savingMeta}
-                          className="px-6 py-2.5 rounded-2xl chrome-button text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap"
+                          className="px-6 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-2 shadow-xs hover:opacity-90 transition disabled:opacity-50"
                         >
                           {savingMeta ? (
                             <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -3035,6 +4246,13 @@ export function AdminClient({
                         </button>
                       )}
                     </div>
+
+                    {metaError && (
+                      <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-400 animate-in fade-in duration-200">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div className="flex-1 font-medium">{metaError}</div>
+                      </div>
+                    )}
                   </form>
                 </div>
               )}
@@ -3044,7 +4262,7 @@ export function AdminClient({
               {/* ============================================================= */}
               {programDetailTab === "schedule" && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  {/* Day Selector Card (5-Column Spacious Grid — Never Stacks "Day 2") */}
+                  {/* Day Selector Card */}
             {(() => {
               const targetDays = selectedProgram.durationDays || 21;
               const allDays = Array.from({ length: targetDays }, (_, i) => i + 1);
@@ -3068,28 +4286,28 @@ export function AdminClient({
               }
 
               return (
-                <div className="glass-panel rounded-3xl p-7 space-y-5">
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-7 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-5">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-900 dark:text-white">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
                         Daily Schedule
                       </h3>
                       <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        {filledCount} of {targetDays} days filled
+                        <span className="font-mono">{filledCount}</span> of <span className="font-mono">{targetDays}</span> days scheduled
                       </p>
                     </div>
 
                     {totalDayBatches > 1 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           onClick={() => setDayBatchPage(Math.max(1, safeBatch - 1))}
                           disabled={safeBatch <= 1}
-                          className="px-3 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium disabled:opacity-35 whitespace-nowrap"
+                          className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-40 transition"
                         >
                           Prev
                         </button>
-                        <span className="text-[11px] text-zinc-500 px-2 whitespace-nowrap">
+                        <span className="text-xs font-mono text-zinc-500 px-2">
                           Days {(safeBatch - 1) * DAY_BATCH_SIZE + 1} –{" "}
                           {Math.min(targetDays, safeBatch * DAY_BATCH_SIZE)}
                         </span>
@@ -3099,7 +4317,7 @@ export function AdminClient({
                             setDayBatchPage(Math.min(totalDayBatches, safeBatch + 1))
                           }
                           disabled={safeBatch >= totalDayBatches}
-                          className="px-3 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium disabled:opacity-35 whitespace-nowrap"
+                          className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 disabled:opacity-40 transition"
                         >
                           Next
                         </button>
@@ -3107,8 +4325,8 @@ export function AdminClient({
                     )}
                   </div>
 
-                  {/* 5 Columns per row = Wide, Luxury Day Pills that never squish text */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                  {/* Clean Day Pills (Max 3 per row for spacious readability) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {visibleDays.map((dayNum) => {
                       const existing = selectedProgram.days.find(
                         (d) => d.dayNumber === dayNum
@@ -3124,16 +4342,16 @@ export function AdminClient({
                           key={dayNum}
                           type="button"
                           onClick={() => handleSelectDay(selectedProgram, dayNum)}
-                          className={`px-4 py-3 rounded-2xl text-left transition flex flex-col justify-between gap-2 min-h-[68px] ${
+                          className={`px-3.5 py-3 rounded-xl text-left transition flex flex-col justify-between gap-1.5 min-h-[64px] border ${
                             isSelected
-                              ? "chrome-button"
+                              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs border-transparent"
                               : filled
-                              ? "glass-panel-subtle border-orange-500/25 text-zinc-900 dark:text-white"
-                              : "glass-panel-subtle opacity-65 hover:opacity-100 text-zinc-600 dark:text-zinc-400"
+                              ? "bg-zinc-50 dark:bg-white/5 border-zinc-200/80 dark:border-white/10 text-zinc-900 dark:text-white hover:bg-zinc-100 dark:hover:bg-white/10"
+                              : "bg-zinc-50/40 dark:bg-white/[0.02] border-zinc-200/50 dark:border-white/5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300"
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2 w-full">
-                            <span className="text-xs font-semibold tracking-tight whitespace-nowrap shrink-0">
+                            <span className="text-xs font-medium whitespace-nowrap shrink-0">
                               Day {dayNum}
                             </span>
 
@@ -3141,8 +4359,8 @@ export function AdminClient({
                               <span
                                 className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
                                   isSelected
-                                    ? "bg-orange-500 text-white"
-                                    : "bg-orange-500/15 text-orange-600 dark:text-orange-400"
+                                    ? "bg-white text-zinc-950 dark:bg-zinc-950 dark:text-white"
+                                    : "bg-zinc-900/10 text-zinc-900 dark:bg-white/20 dark:text-white"
                                 }`}
                               >
                                 <Check className="w-2.5 h-2.5 stroke-[2.5]" />
@@ -3152,8 +4370,8 @@ export function AdminClient({
                             )}
                           </div>
 
-                          <span className="text-[11px] opacity-70 truncate block w-full">
-                            {filled ? cleanSubtitle || "Completed" : "Empty"}
+                          <span className="text-[11px] opacity-70 truncate block w-full font-normal">
+                            {filled ? cleanSubtitle || "Configured" : "Unset"}
                           </span>
                         </button>
                       );
@@ -3164,15 +4382,15 @@ export function AdminClient({
             })()}
 
             {/* Day Content Form */}
-            <div className="glass-panel rounded-3xl p-7 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-900/[0.06] dark:border-white/10 pb-5">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-8 space-y-8 border border-zinc-200/80 dark:border-white/10 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 dark:border-white/10 pb-5">
                 <div>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500 dark:text-zinc-400 block">
-                    Schedule Editor
-                  </span>
-                  <h3 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white mt-0.5">
-                    Day {selectedDayNum} of {selectedProgram.durationDays}
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    Day {selectedDayNum} Protocol • Curriculum Blueprint
                   </h3>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Configure daily training sequence, recovery guidance, meals, and push reminders
+                  </p>
                 </div>
 
                 {selectedProgram.days.some(
@@ -3182,7 +4400,7 @@ export function AdminClient({
                     type="button"
                     onClick={() => handleClearDay(selectedProgram)}
                     disabled={savingDay}
-                    className="px-3.5 py-2 rounded-2xl glass-panel-subtle text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white text-[11px] font-medium flex items-center gap-1.5 w-fit whitespace-nowrap"
+                    className="px-3.5 py-1.5 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs font-medium flex items-center gap-1.5 w-fit whitespace-nowrap transition border border-red-200/60 dark:border-red-900/40"
                   >
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
                     <span>Clear Day {selectedDayNum}</span>
@@ -3190,198 +4408,387 @@ export function AdminClient({
                 )}
               </div>
 
-              {/* Row 1: Day Title & Activity Type */}
-              <div className="grid md:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Day Title
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={`e.g. Day ${selectedDayNum}: Core & Mobility`}
-                    value={dayForm.title}
-                    onChange={(e) =>
-                      setDayForm((p) => ({ ...p, title: e.target.value }))
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                  />
+              {/* SECTION 1: DAY IDENTITY & ACTIVITY CATEGORY */}
+              <div className="space-y-5">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    1. Ritual Cadence &amp; Daily Category
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Day title, focus mode (Training, Rest, or Connection), coach assignment, and goal
+                  </p>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                    Activity Type
-                  </label>
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {(
-                      [
-                        {
-                          value: "TRAINING_DAY",
-                          label: "Workout",
-                          icon: Dumbbell,
-                        },
-                        {
-                          value: "REST_DAY",
-                          label: "Rest Day",
-                          icon: Coffee,
-                        },
-                        {
-                          value: "MEETUP_DAY",
-                          label: "Meetup",
-                          icon: MapPin,
-                        },
-                      ] as const
-                    ).map((typeOpt) => {
-                      const Icon = typeOpt.icon;
-                      const active = dayForm.dayType === typeOpt.value;
-                      return (
-                        <button
-                          key={typeOpt.value}
-                          type="button"
-                          onClick={() =>
-                            setDayForm((p) => ({ ...p, dayType: typeOpt.value }))
-                          }
-                          className={`py-2.5 px-3 rounded-2xl text-[11px] font-medium flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
-                            active
-                              ? "chrome-button"
-                              : "glass-panel-subtle text-zinc-700 dark:text-zinc-300"
-                          }`}
-                        >
-                          <Icon className="w-3.5 h-3.5 shrink-0" />
-                          <span>{typeOpt.label}</span>
-                        </button>
-                      );
-                    })}
+                <div className="grid md:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Day Title *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder={`e.g. Day ${selectedDayNum}: Core & Mobility Sequence`}
+                      value={dayForm.title}
+                      onChange={(e) =>
+                        setDayForm((p) => ({ ...p, title: e.target.value }))
+                      }
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Discipline Category *
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(
+                        [
+                          {
+                            value: "TRAINING_DAY",
+                            label: "Training",
+                            icon: Dumbbell,
+                          },
+                          {
+                            value: "REST_DAY",
+                            label: "Rest",
+                            icon: Coffee,
+                          },
+                          {
+                            value: "CONNECTION_DAY",
+                            label: "Connect",
+                            icon: MapPin,
+                          },
+                        ] as const
+                      ).map((typeOpt) => {
+                        const Icon = typeOpt.icon;
+                        const active =
+                          dayForm.dayType === typeOpt.value ||
+                          (typeOpt.value === "CONNECTION_DAY" && dayForm.dayType === "MEETUP_DAY");
+                        return (
+                          <button
+                            key={typeOpt.value}
+                            type="button"
+                            onClick={() =>
+                              setDayForm((p) => ({
+                                ...p,
+                                dayType: typeOpt.value,
+                                dayNotifications: getDefaultNotificationsForType(typeOpt.value),
+                              }))
+                            }
+                            className={`py-2 px-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition whitespace-nowrap ${
+                              active
+                                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                                : "bg-zinc-50 dark:bg-white/5 border border-zinc-200/80 dark:border-white/10 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{typeOpt.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Row 1B: Assigned Coach & Focus Target for Today (Hidden for REST_DAY) */}
-              {dayForm.dayType !== "REST_DAY" && (
-                <div className="grid md:grid-cols-2 gap-5 p-4 sm:p-5 rounded-2xl glass-panel-subtle border border-zinc-200/60 dark:border-white/10">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <UserCheck className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                {/* Assigned Coach & Focus Target for Today (Hidden for REST_DAY) */}
+                {dayForm.dayType !== "REST_DAY" && (
+                  <div className="grid md:grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
                         <span>Lead Coach for Day {selectedDayNum}</span>
                       </label>
-                      <span className="text-[10px] text-zinc-400">From Program Coaches</span>
-                    </div>
 
-                    <select
-                      value={dayForm.coachName}
-                      onChange={(e) => setDayForm((p) => ({ ...p, coachName: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                    >
-                      <option value="">— Select Coach for Today —</option>
-                      {parseTagList(selectedProgram.coachName).map((coach, idx) => (
-                        <option key={idx} value={coach}>
-                          {coach}
-                        </option>
-                      ))}
-                    </select>
-
-                    {parseTagList(selectedProgram.coachName).length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[10px] text-zinc-400">Quick select:</span>
+                      <select
+                        value={dayForm.coachName}
+                        onChange={(e) => setDayForm((p) => ({ ...p, coachName: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                      >
+                        <option value="">— Select Coach for Today —</option>
                         {parseTagList(selectedProgram.coachName).map((coach, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setDayForm((p) => ({ ...p, coachName: coach }))}
-                            className={`px-2.5 py-1 rounded-xl text-[10px] font-medium transition ${
-                              dayForm.coachName === coach
-                                ? "chrome-button shadow-sm"
-                                : "bg-white/40 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-white/60 dark:hover:bg-white/10"
-                            }`}
-                          >
+                          <option key={idx} value={coach}>
                             {coach}
-                          </button>
+                          </option>
                         ))}
-                      </div>
-                    )}
-                  </div>
+                      </select>
 
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                        <span>Day Focus / Recommended Target</span>
-                      </label>
-                      <span className="text-[10px] text-zinc-400">From Program Focus</span>
-                    </div>
-
-                    <select
-                      value={dayForm.recommendedFor}
-                      onChange={(e) => setDayForm((p) => ({ ...p, recommendedFor: e.target.value }))}
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                    >
-                      <option value="">— Select Target Goal for Today —</option>
-                      {parseTagList(selectedProgram.recommendedFor).map((item, idx) => (
-                        <option key={idx} value={item}>
-                          {item}
-                        </option>
-                      ))}
-                    </select>
-
-                    {parseTagList(selectedProgram.recommendedFor).length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[10px] text-zinc-400">Quick select:</span>
-                        {parseTagList(selectedProgram.recommendedFor).map((item, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setDayForm((p) => ({ ...p, recommendedFor: item }))}
-                            className={`px-2.5 py-1 rounded-xl text-[10px] font-medium transition ${
-                              dayForm.recommendedFor === item
-                                ? "chrome-button shadow-sm"
-                                : "bg-white/40 dark:bg-white/5 text-zinc-600 dark:text-zinc-300 hover:bg-white/60 dark:hover:bg-white/10"
-                            }`}
-                          >
-                            {item}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Row 2: Conditional Fields based on Activity Type */}
-              {dayForm.dayType === "TRAINING_DAY" && (
-                <div className="grid lg:grid-cols-2 gap-6">
-                  <div className="space-y-5">
-                    <div className="space-y-1.5">
-                      <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
-                        <Video className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>Workout Video Link</span>
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={dayForm.videoUrl}
-                        onChange={(e) =>
-                          setDayForm((p) => ({ ...p, videoUrl: e.target.value }))
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                      />
-                      {dayForm.videoUrl && (
-                        <p className="text-[11px] text-zinc-500 truncate">
-                          Embed:{" "}
-                          <span className="font-mono">
-                            {normalizeVideoEmbed(dayForm.videoUrl).embedUrl}
-                          </span>
-                        </p>
+                      {parseTagList(selectedProgram.coachName).length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {parseTagList(selectedProgram.coachName).map((coach, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setDayForm((p) => ({ ...p, coachName: coach }))}
+                              className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                                dayForm.coachName === coach
+                                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-medium"
+                                  : "bg-zinc-100 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                              }`}
+                            >
+                              {coach}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5">
-                        <Utensils className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>Meal Guide</span>
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                        <span>Day Focus &amp; Target Goal</span>
+                      </label>
+
+                      <select
+                        value={dayForm.recommendedFor}
+                        onChange={(e) => setDayForm((p) => ({ ...p, recommendedFor: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                      >
+                        <option value="">— Select Target Goal for Today —</option>
+                        {parseTagList(selectedProgram.recommendedFor).map((item, idx) => (
+                          <option key={idx} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+
+                      {parseTagList(selectedProgram.recommendedFor).length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {parseTagList(selectedProgram.recommendedFor).map((item, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setDayForm((p) => ({ ...p, recommendedFor: item }))}
+                              className={`px-2.5 py-1 rounded-lg text-xs transition ${
+                                dayForm.recommendedFor === item
+                                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-medium"
+                                  : "bg-zinc-100 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                              }`}
+                            >
+                              {item}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 2: CIRCADIAN SLEEP RECOMMENDATION */}
+              <div className="space-y-3 pt-4 border-t border-zinc-100 dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <Moon className="w-4 h-4 text-zinc-400 shrink-0" />
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    2. Circadian Sleep Recommendation
+                  </h4>
+                </div>
+                <input
+                  type="text"
+                  placeholder="e.g. Target 8 Hours • Wind down before 22:30"
+                  value={dayForm.sleepRecommendation}
+                  onChange={(e) =>
+                    setDayForm((p) => ({ ...p, sleepRecommendation: e.target.value }))
+                  }
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                />
+                <p className="text-[11px] text-zinc-400 font-light">
+                  Displayed on the member's Morning Awakening &amp; Evening Wind-down cockpit card.
+                </p>
+              </div>
+
+              {/* SECTION 3: CURRICULUM DETAILS (TRAINING / REST / CONNECTION) */}
+              <div className="space-y-5 pt-4 border-t border-zinc-100 dark:border-white/10">
+                <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                    3. {dayForm.dayType === "TRAINING_DAY"
+                      ? "Movement Sequences, Video & Nutrition"
+                      : dayForm.dayType === "REST_DAY"
+                      ? "Parasympathetic Decompression & Nutrition"
+                      : "Studio Venue, Virtual Stream & Nutrition"}
+                  </h4>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    Prescribed routines, video coaching resources, and dietary guidance
+                  </p>
+                </div>
+
+                {dayForm.dayType === "TRAINING_DAY" && (
+                  <div className="grid lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                          <Video className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span>YouTube Premium Video Link (Subscribers Only)</span>
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="https://www.youtube.com/watch?v=..."
+                          value={dayForm.videoUrl}
+                          onChange={(e) =>
+                            setDayForm((p) => ({ ...p, videoUrl: e.target.value }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                        <p className="text-[11px] text-zinc-400 font-light">
+                          Opens directly in member's app with subscriber verification.
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                          <Utensils className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                          <span>Meal Recommendation &amp; Nutrition Guide</span>
+                        </label>
+                        <textarea
+                          rows={4}
+                          placeholder="Recommended meals and anti-inflammatory hydration for today..."
+                          value={dayForm.mealRecommendation}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              mealRecommendation: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <MultiTagInput
+                        label="Workout Options for Member Selection"
+                        subLabel="Workout modalities selectable by members (press Enter to add)"
+                        placeholder="e.g. Hot Pilates, Strength Workout, Outdoor Running"
+                        value={stringifyTagList(dayForm.workoutOptions)}
+                        onChange={(val) => setDayForm((p) => ({ ...p, workoutOptions: parseTagList(val) }))}
+                        icon={Dumbbell}
+                        chipColor="zinc"
+                        quickSuggestions={[
+                          "Hot Pilates",
+                          "Strength Workout",
+                          "Outdoor Running",
+                          "Yoga & Mobility Flow",
+                          "Cardio / HIIT",
+                          "Custom Routine",
+                        ]}
+                      />
+
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Movement Checklist &amp; Target Reps
+                            </label>
+                            <p className="text-[11px] text-zinc-400">
+                              Format: Exercise = Target (e.g. Push-ups = 30 reps). Members record their actual reps in dashboard.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDayForm((p) => ({
+                                ...p,
+                                videoChecklist: [...p.videoChecklist, ""],
+                              }))
+                            }
+                            className="text-xs font-medium text-zinc-900 dark:text-white hover:text-zinc-600 flex items-center gap-1 transition shrink-0"
+                          >
+                            <Plus className="w-3 h-3 shrink-0" /> Add Item
+                          </button>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          {[
+                            "Push-ups = 30 reps",
+                            "Sit-ups = 50 reps",
+                            "Pull-ups = 10 reps",
+                            "Squats = 40 reps",
+                            "Plank = 60 secs",
+                          ].map((preset, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                if (!dayForm.videoChecklist.includes(preset)) {
+                                  setDayForm((p) => ({
+                                    ...p,
+                                    videoChecklist: p.videoChecklist.filter(Boolean).length === 0
+                                      ? [preset]
+                                      : [...p.videoChecklist, preset],
+                                  }));
+                                }
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 text-[11px] font-mono transition"
+                            >
+                              + {preset}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-2">
+                          {dayForm.videoChecklist.map((item, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                placeholder="Exercise = Target Reps (e.g. Push-ups = 30 reps)"
+                                value={item}
+                                onChange={(e) => {
+                                  const next = [...dayForm.videoChecklist];
+                                  next[idx] = e.target.value;
+                                  setDayForm((p) => ({ ...p, videoChecklist: next }));
+                                }}
+                                className="flex-1 px-3.5 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                              />
+                              {dayForm.videoChecklist.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setDayForm((p) => ({
+                                      ...p,
+                                      videoChecklist: p.videoChecklist.filter(
+                                        (_, i) => i !== idx
+                                      ),
+                                    }))
+                                  }
+                                  className="p-2 rounded-lg text-zinc-400 hover:text-red-500 transition shrink-0"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {dayForm.dayType === "REST_DAY" && (
+                  <div className="grid md:grid-cols-2 gap-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Parasympathetic Restoration Guide
                       </label>
                       <textarea
-                        rows={4}
-                        placeholder="Recommended meals and hydration for today..."
+                        rows={5}
+                        placeholder="Gentle walk instructions, box breathing, foam rolling..."
+                        value={dayForm.restInstructions}
+                        onChange={(e) =>
+                          setDayForm((p) => ({
+                            ...p,
+                            restInstructions: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Rest Day Meal &amp; Hydration Guide
+                      </label>
+                      <textarea
+                        rows={5}
+                        placeholder="Electrolyte hydration, restorative herbal tea, clean eating..."
                         value={dayForm.mealRecommendation}
                         onChange={(e) =>
                           setDayForm((p) => ({
@@ -3389,159 +4796,246 @@ export function AdminClient({
                             mealRecommendation: e.target.value,
                           }))
                         }
-                        className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs leading-relaxed"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                       />
                     </div>
                   </div>
+                )}
 
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                        Daily Checklist
+                {(dayForm.dayType === "CONNECTION_DAY" || dayForm.dayType === "MEETUP_DAY") && (
+                  <div className="space-y-5">
+                    {/* Row 1: Event Title & Schedule (Max 2 columns) */}
+                    <div className="grid sm:grid-cols-2 gap-5">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Event / Meetup Title *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. BMS Community Studio Flow & Mindful Brunch"
+                          value={dayForm.eventTitle}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              eventTitle: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Session Schedule (Time) *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 09:00 AM – 11:30 AM WIB"
+                          value={dayForm.onsiteSchedule}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              onsiteSchedule: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 2: Studio Venue & Google Maps Link (Max 2 columns) */}
+                    <div className="grid sm:grid-cols-2 gap-5">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Location / Studio Venue *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. The BMS Sanctuary Studio, Senopati, Jakarta"
+                          value={dayForm.onsiteVenue}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              onsiteVenue: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Google Maps Link (Venue URL)
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="https://maps.app.goo.gl/..."
+                          value={dayForm.mapLink}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              mapLink: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 3: Event Host & Virtual Fallback Link (Max 2 columns) */}
+                    <div className="grid sm:grid-cols-2 gap-5">
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Who Members Will Meet (Host / Coach)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Coach Maria & Founder Sarah"
+                          value={dayForm.eventHost}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              eventHost: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Virtual Broadcast Link (Remote Fallback)
+                        </label>
+                        <input
+                          type="url"
+                          placeholder="https://meet.google.com/..."
+                          value={dayForm.meetupLink}
+                          onChange={(e) =>
+                            setDayForm((p) => ({
+                              ...p,
+                              meetupLink: e.target.value,
+                            }))
+                          }
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Row 4: Event Details & Rundown */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Event Details &amp; Agenda Rundown
                       </label>
-                      <button
-                        type="button"
-                        onClick={() =>
+                      <textarea
+                        rows={3}
+                        placeholder="e.g. 09:00 Arrival & herbal hydration, 09:30 Guided community flow, 10:30 Group reflection & networking brunch..."
+                        value={dayForm.eventDetails}
+                        onChange={(e) =>
                           setDayForm((p) => ({
                             ...p,
-                            videoChecklist: [...p.videoChecklist, ""],
+                            eventDetails: e.target.value,
                           }))
                         }
-                        className="text-[11px] font-medium text-zinc-700 dark:text-zinc-300 hover:underline flex items-center gap-1 whitespace-nowrap"
-                      >
-                        <Plus className="w-3 h-3 shrink-0" /> Add Item
-                      </button>
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                      />
                     </div>
 
-                    <div className="space-y-2.5">
-                      {dayForm.videoChecklist.map((item, idx) => (
-                        <div key={idx} className="flex items-center gap-2.5">
+                    {/* Row 5: Food Recommendation for Connect Day */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        Connect Day Meal &amp; Hydration Recommendation
+                      </label>
+                      <textarea
+                        rows={3}
+                        placeholder="e.g. Pre-event electrolyte hydration and post-meetup high-protein recovery brunch..."
+                        value={dayForm.mealRecommendation}
+                        onChange={(e) =>
+                          setDayForm((p) => ({
+                            ...p,
+                            mealRecommendation: e.target.value,
+                          }))
+                        }
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 4: DAILY PUSH NOTIFICATIONS DISPATCH */}
+              <div className="space-y-5 pt-4 border-t border-zinc-100 dark:border-white/10">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 dark:border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-zinc-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                        4. Scheduled Push Dispatches ({dayForm.dayNotifications?.length || 0})
+                      </h4>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        {dayForm.dayType === "REST_DAY" ? "2 Reminders configured for rest day" : "3 Reminders configured for full day routine"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {(dayForm.dayNotifications || []).map((notif, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-xl p-4 space-y-3 bg-zinc-50/70 dark:bg-white/[0.03] border border-zinc-200/70 dark:border-white/10"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-200 dark:bg-white/10 text-zinc-800 dark:text-zinc-200 text-[10px] uppercase tracking-wider font-semibold">
+                          {notif.label || `Reminder ${idx + 1}`}
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Clock className="w-3.5 h-3.5 text-zinc-400" />
                           <input
-                            type="text"
-                            placeholder={`Checklist item ${idx + 1}`}
-                            value={item}
+                            type="time"
+                            value={notif.time}
                             onChange={(e) => {
-                              const next = [...dayForm.videoChecklist];
-                              next[idx] = e.target.value;
-                              setDayForm((p) => ({ ...p, videoChecklist: next }));
+                              const updated = [...dayForm.dayNotifications];
+                              updated[idx] = { ...updated[idx], time: e.target.value };
+                              setDayForm((p) => ({ ...p, dayNotifications: updated }));
                             }}
-                            className="flex-1 px-3.5 py-2.5 rounded-2xl glass-input text-xs"
+                            className="px-2 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs font-mono font-medium text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
                           />
-                          {dayForm.videoChecklist.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setDayForm((p) => ({
-                                  ...p,
-                                  videoChecklist: p.videoChecklist.filter(
-                                    (_, i) => i !== idx
-                                  ),
-                                }))
-                              }
-                              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition shrink-0"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
                         </div>
-                      ))}
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-[11px] font-medium text-zinc-500">
+                          Notification Message
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={notif.message}
+                          onChange={(e) => {
+                            const updated = [...dayForm.dayNotifications];
+                            updated[idx] = { ...updated[idx], message: e.target.value };
+                            setDayForm((p) => ({ ...p, dayNotifications: updated }));
+                          }}
+                          placeholder="Notification message body..."
+                          className="w-full px-3 py-2 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                        />
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              )}
-
-              {dayForm.dayType === "REST_DAY" && (
-                <div className="grid md:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Rest & Recovery Guide
-                    </label>
-                    <textarea
-                      rows={4}
-                      placeholder="Stretching, sleep, or light walk instructions..."
-                      value={dayForm.restInstructions}
-                      onChange={(e) =>
-                        setDayForm((p) => ({
-                          ...p,
-                          restInstructions: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs leading-relaxed"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Meal Guide (Optional)
-                    </label>
-                    <textarea
-                      rows={4}
-                      placeholder="Hydration and nutrition notes..."
-                      value={dayForm.mealRecommendation}
-                      onChange={(e) =>
-                        setDayForm((p) => ({
-                          ...p,
-                          mealRecommendation: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs leading-relaxed"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {dayForm.dayType === "MEETUP_DAY" && (
-                <div className="grid md:grid-cols-2 gap-5">
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Meetup Location
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Senayan Park Studio, Jakarta"
-                      value={dayForm.onsiteVenue}
-                      onChange={(e) =>
-                        setDayForm((p) => ({
-                          ...p,
-                          onsiteVenue: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-medium text-zinc-600 dark:text-zinc-400">
-                      Meetup Schedule
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 07:00 - 09:00 WIB"
-                      value={dayForm.onsiteSchedule}
-                      onChange={(e) =>
-                        setDayForm((p) => ({
-                          ...p,
-                          onsiteSchedule: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3.5 py-2.5 rounded-2xl glass-input text-xs"
-                    />
-                  </div>
-                </div>
-              )}
+              </div>
 
               {/* Action Footer */}
-              <div className="pt-5 border-t border-zinc-900/[0.06] dark:border-white/10 flex flex-wrap items-center justify-between gap-4">
-                <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  Changes are saved immediately to this program.
+              <div className="pt-4 border-t border-zinc-100 dark:border-white/10 flex flex-wrap items-center justify-between gap-4">
+                <span className="text-[11px] text-zinc-400">
+                  Changes save directly to cohort schedule in the SQLite database.
                 </span>
 
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
                     onClick={() => handleSaveDay(selectedProgram, false)}
                     disabled={savingDay}
-                    className="px-4 py-2.5 rounded-2xl glass-panel-subtle text-[11px] font-medium text-zinc-900 dark:text-white flex items-center gap-1.5 whitespace-nowrap"
+                    className="px-4 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-white/10 dark:hover:bg-white/15 text-zinc-900 dark:text-white text-xs font-medium flex items-center gap-1.5 whitespace-nowrap transition disabled:opacity-50"
                   >
                     {savingDay ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -3556,13 +5050,13 @@ export function AdminClient({
                       type="button"
                       onClick={() => handleSaveDay(selectedProgram, true)}
                       disabled={savingDay}
-                      className="px-5 py-2.5 rounded-2xl chrome-button text-[11px] font-medium flex items-center gap-1.5 whitespace-nowrap"
+                      className="px-5 py-2.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-2 whitespace-nowrap shadow-xs hover:opacity-90 transition disabled:opacity-50"
                     >
                       {savingDay ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
                       ) : (
                         <>
-                          <span>Save & Next Day</span>
+                          <span>Save &amp; Next Day</span>
                           <ArrowRight className="w-3.5 h-3.5 shrink-0" />
                         </>
                       )}
@@ -3570,6 +5064,13 @@ export function AdminClient({
                   )}
                 </div>
               </div>
+
+              {dayError && (
+                <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 flex items-start gap-2.5 text-xs text-red-700 dark:text-red-400 animate-in fade-in duration-200">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div className="flex-1 font-medium">{dayError}</div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -3583,7 +5084,7 @@ export function AdminClient({
         {activeMenu === "members" && (
           <div className="space-y-6">
             {/* Search & Filter Widget */}
-            <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -3594,11 +5095,11 @@ export function AdminClient({
                     setMemberPage(1);
                   }}
                   placeholder="Search customers by name, email, or phone..."
-                  className="w-full pl-9 pr-4 py-2 rounded-2xl glass-input text-xs"
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                 />
               </div>
 
-              <div className="flex items-center gap-1 p-1 rounded-2xl glass-panel-subtle w-fit">
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-100 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 w-fit">
                 {(["ALL", "ACTIVE", "PENDING"] as const).map((f) => (
                   <button
                     key={f}
@@ -3607,9 +5108,9 @@ export function AdminClient({
                       setMemberFilter(f);
                       setMemberPage(1);
                     }}
-                    className={`px-3.5 py-1.5 rounded-xl text-[11px] font-medium transition whitespace-nowrap ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition whitespace-nowrap ${
                       memberFilter === f
-                        ? "chrome-button"
+                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
                         : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                     }`}
                   >
@@ -3620,32 +5121,32 @@ export function AdminClient({
             </div>
 
             {/* Customers Table Widget */}
-            <div className="glass-panel rounded-3xl overflow-hidden">
-              <div className="px-7 py-5 border-b border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-800 dark:text-zinc-200">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
                   Customers Directory ({filteredMembers.length})
                 </h2>
-                <span className="text-[11px] text-zinc-500 dark:text-zinc-400 hidden sm:inline">
-                  Manage account status and platform credentials
+                <span className="text-[11px] text-zinc-400 hidden sm:inline">
+                  Manage customer account status, credentials, and program enrollments
                 </span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-zinc-900/[0.06] dark:border-white/10 text-[10px] uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400">
-                      <th className="py-3.5 px-7 font-semibold whitespace-nowrap">Customer</th>
-                      <th className="py-3.5 px-7 font-semibold whitespace-nowrap">Phone</th>
-                      <th className="py-3.5 px-7 font-semibold whitespace-nowrap">Enrolled Programs</th>
-                      <th className="py-3.5 px-7 font-semibold text-right whitespace-nowrap">Account Actions</th>
+                    <tr className="border-b border-zinc-100 dark:border-white/10 text-[10px] uppercase tracking-wider text-zinc-400">
+                      <th className="py-3 px-6 font-semibold whitespace-nowrap">Customer</th>
+                      <th className="py-3 px-6 font-semibold whitespace-nowrap">Phone</th>
+                      <th className="py-3 px-6 font-semibold whitespace-nowrap">Enrolled Programs</th>
+                      <th className="py-3 px-6 font-semibold text-right whitespace-nowrap">Account Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-900/[0.05] dark:divide-white/5 text-xs">
+                  <tbody className="divide-y divide-zinc-100 dark:divide-white/5 text-xs">
                     {paginatedMembers.length === 0 ? (
                       <tr>
                         <td
                           colSpan={4}
-                          className="py-14 text-center text-xs text-zinc-500 dark:text-zinc-400"
+                          className="py-14 text-center text-xs text-zinc-400"
                         >
                           No customers found.
                         </td>
@@ -3654,27 +5155,27 @@ export function AdminClient({
                       paginatedMembers.map((m) => (
                         <tr
                           key={m.id}
-                          className="hover:bg-white/30 dark:hover:bg-white/[0.02] transition"
+                          className="hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                         >
-                          <td className="py-4 px-7">
+                          <td className="py-4 px-6">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-zinc-900 dark:text-white whitespace-nowrap">
                                 {m.fullName}
                               </span>
                               {m.status === "SUSPENDED" && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-900/10 dark:bg-white/10 text-zinc-600 dark:text-zinc-300 font-medium whitespace-nowrap">
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-500 font-medium whitespace-nowrap">
                                   Suspended
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-zinc-500 mt-0.5">
+                            <div className="text-[11px] text-zinc-400 mt-0.5">
                               {m.email}
                             </div>
                           </td>
-                          <td className="py-4 px-7 text-[11px] text-zinc-600 dark:text-zinc-300 whitespace-nowrap">
+                          <td className="py-4 px-6 text-[11px] text-zinc-600 dark:text-zinc-300 whitespace-nowrap">
                             {m.phone || "—"}
                           </td>
-                          <td className="py-4 px-7">
+                          <td className="py-4 px-6">
                             {m.enrollments.length === 0 ? (
                               <span className="text-[11px] text-zinc-400">None</span>
                             ) : (
@@ -3682,10 +5183,10 @@ export function AdminClient({
                                 {m.enrollments.map((en) => (
                                   <span
                                     key={en.id}
-                                    className={`text-[11px] px-2.5 py-0.5 rounded-full font-medium whitespace-nowrap ${
+                                    className={`text-[11px] px-2 py-0.5 rounded-md whitespace-nowrap ${
                                       en.status === "ACTIVE"
-                                        ? "glass-panel-subtle text-zinc-900 dark:text-white"
-                                        : "bg-orange-500/15 text-orange-700 dark:text-orange-300"
+                                        ? "bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 font-medium"
+                                        : "bg-zinc-100 dark:bg-white/5 text-zinc-500"
                                     }`}
                                   >
                                     {en.program.title}
@@ -3694,14 +5195,14 @@ export function AdminClient({
                               </div>
                             )}
                           </td>
-                          <td className="py-4 px-7 text-right">
+                          <td className="py-4 px-6 text-right">
                             {m.id !== currentAdminId && (
-                              <div className="inline-flex items-center gap-2">
+                              <div className="inline-flex items-center gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => handleToggleUserRole(m)}
                                   disabled={userActionLoading === m.id}
-                                  className="px-2.5 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 text-[11px] font-medium flex items-center gap-1 whitespace-nowrap transition"
                                   title={m.role === "SUPERADMIN" ? "Demote to Member" : "Promote to Superadmin"}
                                 >
                                   <UserCheck className="w-3 h-3 shrink-0" />
@@ -3711,7 +5212,7 @@ export function AdminClient({
                                   type="button"
                                   onClick={() => handleResetPassword(m)}
                                   disabled={userActionLoading === m.id}
-                                  className="px-2.5 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 text-[11px] font-medium flex items-center gap-1 whitespace-nowrap transition"
                                 >
                                   <KeyRound className="w-3 h-3 shrink-0" />
                                   <span>Reset Pass</span>
@@ -3720,7 +5221,7 @@ export function AdminClient({
                                   type="button"
                                   onClick={() => handleToggleUserStatus(m)}
                                   disabled={userActionLoading === m.id}
-                                  className="px-2.5 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1 whitespace-nowrap"
+                                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-700 dark:text-zinc-300 text-[11px] font-medium flex items-center gap-1 whitespace-nowrap transition"
                                 >
                                   <Ban className="w-3 h-3 shrink-0" />
                                   <span>{m.status === "ACTIVE" ? "Suspend" : "Activate"}</span>
@@ -3729,7 +5230,7 @@ export function AdminClient({
                                   type="button"
                                   onClick={() => handleDeleteUser(m)}
                                   disabled={userActionLoading === m.id}
-                                  className="p-1.5 rounded-xl glass-panel-subtle text-red-600 dark:text-red-400 hover:border-red-500/40 flex items-center gap-1"
+                                  className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-1 transition"
                                   title="Delete user account"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -3762,7 +5263,7 @@ export function AdminClient({
         {activeMenu === "payments" && (
           <div className="space-y-6">
             {/* Search Widget */}
-            <div className="glass-panel rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="relative flex-1 max-w-sm">
                 <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
@@ -3772,53 +5273,53 @@ export function AdminClient({
                     setQrisSearch(e.target.value);
                     setQrisPage(1);
                   }}
-                  placeholder="Search payments..."
-                  className="w-full pl-9 pr-4 py-2 rounded-2xl glass-input text-xs"
+                  placeholder="Search payments by customer or program..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                 />
               </div>
 
-              <span className="text-[11px] text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                {pendingEnrollments.length} pending requests
+              <span className="text-xs text-zinc-400 whitespace-nowrap">
+                <span className="font-mono text-zinc-800 dark:text-zinc-200 font-semibold">{pendingEnrollments.length}</span> pending verification
               </span>
             </div>
 
             {/* Payments List Widget */}
-            <div className="glass-panel rounded-3xl overflow-hidden">
-              <div className="px-7 py-5 border-b border-zinc-900/[0.06] dark:border-white/10">
-                <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-800 dark:text-zinc-200">
-                  Pending Payments
+            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
+                  Pending QRIS Payments
                 </h2>
               </div>
 
               {paginatedQris.length === 0 ? (
                 <div className="p-14 text-center space-y-2">
-                  <CheckCircle2 className="w-6 h-6 text-zinc-400 mx-auto" />
-                  <p className="text-xs font-medium text-zinc-900 dark:text-white">
+                  <CheckCircle2 className="w-6 h-6 text-zinc-300 dark:text-zinc-600 mx-auto" />
+                  <p className="text-xs font-semibold text-zinc-900 dark:text-white">
                     All caught up
                   </p>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                    There are no pending payments to review.
+                  <p className="text-xs text-zinc-400">
+                    There are no pending payments requiring admin review.
                   </p>
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-900/[0.06] dark:divide-white/10">
+                <div className="divide-y divide-zinc-100 dark:divide-white/5">
                   {paginatedQris.map((item) => (
                     <div
                       key={item.id}
-                      className="p-7 flex flex-col sm:flex-row sm:items-center justify-between gap-5"
+                      className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                     >
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2.5">
                           <span className="text-sm font-semibold text-zinc-900 dark:text-white">
                             {item.userFullName}
                           </span>
-                          <span className="text-[11px] text-zinc-500">
+                          <span className="text-[11px] text-zinc-400">
                             {item.userEmail}
                           </span>
                         </div>
                         <p className="text-xs text-zinc-700 dark:text-zinc-300">
                           {item.programTitle} •{" "}
-                          <strong className="font-semibold">
+                          <strong className="font-mono font-semibold text-zinc-900 dark:text-white">
                             Rp {item.amountPaid.toLocaleString("id-ID")}
                           </strong>
                         </p>
@@ -3833,7 +5334,7 @@ export function AdminClient({
                         type="button"
                         onClick={() => handleApprovePayment(item.id)}
                         disabled={approvingId === item.id}
-                        className="px-4 py-2.5 rounded-2xl chrome-button text-[11px] font-medium flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap"
+                        className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center justify-center gap-1.5 shrink-0 whitespace-nowrap shadow-xs hover:opacity-90 transition disabled:opacity-50"
                       >
                         {approvingId === item.id ? (
                           <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
@@ -3866,19 +5367,19 @@ export function AdminClient({
       {/* PUBLISH VALIDATION & CONFIRMATION GUARD MODAL                     */}
       {/* ================================================================= */}
       {publishModal?.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-lg rounded-3xl bg-white dark:bg-[#141418] shadow-2xl border border-zinc-200 dark:border-white/10 p-7 sm:p-9 text-zinc-900 dark:text-zinc-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 shadow-2xl border border-zinc-200 dark:border-white/10 p-6 sm:p-8 text-zinc-900 dark:text-zinc-100">
             {publishModal.mode === "ERROR" ? (
               <div className="space-y-6">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0">
                     <ShieldAlert className="w-5 h-5" />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-400 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-red-600 dark:text-red-400 block">
                       Publication Guard • Incomplete
                     </span>
-                    <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                    <h3 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
                       Cannot Publish Program
                     </h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
@@ -3887,7 +5388,7 @@ export function AdminClient({
                   </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 space-y-2">
+                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 space-y-2">
                   <h4 className="text-xs font-semibold text-red-800 dark:text-red-300">
                     Validation Requirements ({publishModal.errorList?.length || 0}):
                   </h4>
@@ -3905,9 +5406,9 @@ export function AdminClient({
                   <button
                     type="button"
                     onClick={() => setPublishModal(null)}
-                    className="px-5 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-xs transition"
+                    className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium text-xs transition"
                   >
-                    Close & Fix Issues
+                    Close &amp; Fix Issues
                   </button>
 
                   {publishModal.missingDays && publishModal.missingDays.length > 0 && selectedProgram && (
@@ -3918,7 +5419,7 @@ export function AdminClient({
                         setProgramDetailTab("schedule");
                         handleSelectDay(selectedProgram, publishModal.missingDays![0]);
                       }}
-                      className="px-6 py-2.5 rounded-2xl chrome-button text-xs font-semibold flex items-center gap-1.5"
+                      className="px-5 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition"
                     >
                       <span>Fill Day {publishModal.missingDays[0]}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -3929,15 +5430,15 @@ export function AdminClient({
             ) : (
               <div className="space-y-6">
                 <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 flex items-center justify-center shrink-0">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block">
                       Strict Launch Guard
                     </span>
-                    <h3 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                      Confirm Cohort Launch & Lock
+                    <h3 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
+                      Confirm Cohort Launch &amp; Lock
                     </h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                       Are you sure you want to activate and publish this program?
@@ -3946,7 +5447,7 @@ export function AdminClient({
                 </div>
 
                 {selectedProgram && (
-                  <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-white/10 space-y-2 text-xs">
+                  <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-white/10 space-y-2 text-xs">
                     <div className="flex items-center justify-between pb-2 border-b border-zinc-200 dark:border-white/10">
                       <span className="text-zinc-500">Program Title:</span>
                       <span className="font-semibold text-zinc-900 dark:text-white line-clamp-1 max-w-[200px]">
@@ -3955,29 +5456,29 @@ export function AdminClient({
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Schedule Status:</span>
-                      <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                        All {selectedProgram.durationDays} Days Complete
+                      <span className="font-medium text-zinc-900 dark:text-white">
+                        All <span className="font-mono">{selectedProgram.durationDays}</span> Days Complete
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Tuition Price:</span>
-                      <span className="font-semibold text-zinc-900 dark:text-white">
+                      <span className="font-mono font-semibold text-zinc-900 dark:text-white">
                         Rp {selectedProgram.price.toLocaleString("id-ID")}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Max Capacity:</span>
-                      <span className="font-semibold text-zinc-900 dark:text-white">
+                      <span className="font-mono font-semibold text-zinc-900 dark:text-white">
                         {selectedProgram.maxQuota} Seats
                       </span>
                     </div>
                   </div>
                 )}
 
-                <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
-                  <Lock className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/80 dark:border-white/10 flex items-start gap-2.5 text-xs text-zinc-600 dark:text-zinc-400">
+                  <Lock className="w-4 h-4 shrink-0 mt-0.5 text-zinc-400" />
                   <p className="leading-relaxed">
-                    <strong>Immutability Notice:</strong> Once published, Program Information and pricing will be locked to prevent discrepancies with what customers paid for.
+                    <strong className="text-zinc-900 dark:text-white font-medium">Immutability Notice:</strong> Once published, Program Information and pricing will be locked to prevent discrepancies with what customers paid for.
                   </p>
                 </div>
 
@@ -3985,7 +5486,7 @@ export function AdminClient({
                   <button
                     type="button"
                     onClick={() => setPublishModal(null)}
-                    className="px-5 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-semibold text-xs transition"
+                    className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-medium text-xs transition"
                   >
                     Cancel
                   </button>
@@ -3996,7 +5497,7 @@ export function AdminClient({
                     onClick={() => {
                       if (selectedProgram) handleTogglePublish(selectedProgram, true);
                     }}
-                    className="px-6 py-2.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-semibold text-xs transition flex items-center gap-2 shadow-md disabled:opacity-60"
+                    className="px-5 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium transition flex items-center gap-2 shadow-xs hover:opacity-90 disabled:opacity-50"
                   >
                     {publishingId === selectedProgram?.id ? (
                       <>
@@ -4005,8 +5506,8 @@ export function AdminClient({
                       </>
                     ) : (
                       <>
-                        <Globe className="w-3.5 h-3.5" />
-                        <span>Confirm & Launch Program</span>
+                        <Globe className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Confirm &amp; Launch Program</span>
                       </>
                     )}
                   </button>

@@ -15,8 +15,14 @@ import {
 import { wellnessSignOut } from "@/wellness/actions/auth";
 import { wellnessUserSubmitDayProgress } from "@/wellness/actions/program";
 import { normalizeVideoEmbed } from "@/wellness/integrations/video-provider";
+import { SleepTrackerCard } from "./SleepTrackerCard";
+import { VideoThumbnailLinkCard } from "./VideoThumbnailLinkCard";
+import { WorkoutSection } from "./WorkoutSection";
+import { MealSection } from "./MealSection";
+import { DailyReflectionCard } from "./DailyReflectionCard";
 import {
   CheckCircle,
+  CheckCircle2,
   Clock,
   Lock,
   Loader2,
@@ -53,6 +59,8 @@ export interface ProgramDayItem {
   dayNumber: number;
   title: string;
   dayType: string;
+  workoutOptions?: string[];
+  sleepRecommendation?: string | null;
   unlockDate: string;
   isCalendarUnlocked: boolean;
   isPast2359: boolean;
@@ -64,17 +72,34 @@ export interface ProgramDayItem {
   pendingReminder: string | null;
   completedReminder: string | null;
   meetupLink: string | null;
+  mapLink?: string | null;
   onsiteVenue: string | null;
   onsiteSchedule: string | null;
+  eventTitle?: string | null;
+  eventHost?: string | null;
+  eventDetails?: string | null;
   restInstructions: string | null;
   coachName?: string | null;
   recommendedFor?: string | null;
+  dayNotifications?: Array<{ time: string; message: string; label?: string }>;
   userProgress?: {
     id: string;
     videoWatched: boolean;
     isCompleted: boolean;
     checklistCompleted: string | null;
-    assessmentResponse: string | null;
+    selectedWorkout?: string | null;
+    photoBeforeUrl?: string | null;
+    photoAfterUrl?: string | null;
+    workoutNotes?: string | null;
+    eventFeedback?: string | null;
+    mealCompliance?: string | null;
+    mealNotes?: string | null;
+    dailyReflection?: string | null;
+    happinessRate?: number | null;
+    bedtime?: string | null;
+    wakeTime?: string | null;
+    sleepDurationMinutes?: number | null;
+    assessmentResponse?: string | null;
   } | null;
 }
 
@@ -96,7 +121,9 @@ export interface ProgramItem {
   communityLink: string | null;
   startDate: Date | string;
   endDate: Date | string;
+  registrationOpenDate?: Date | string | null;
   registrationDeadline: Date | string;
+  status?: string;
   dayCount: number;
   days: ProgramDayItem[];
 }
@@ -173,6 +200,19 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
   const [dayChecklists, setDayChecklists] = useState<Record<string, string[]>>({});
   const [dayVideoWatched, setDayVideoWatched] = useState<Record<string, boolean>>({});
   const [dayAssessments, setDayAssessments] = useState<Record<string, string>>({});
+  const [dayWorkouts, setDayWorkouts] = useState<Record<string, string>>({});
+  const [dayPhotosBefore, setDayPhotosBefore] = useState<Record<string, string>>({});
+  const [dayPhotosAfter, setDayPhotosAfter] = useState<Record<string, string>>({});
+  const [dayMealCompliance, setDayMealCompliance] = useState<Record<string, string>>({});
+  const [dayMealNotes, setDayMealNotes] = useState<Record<string, string>>({});
+  const [dayWorkoutNotes, setDayWorkoutNotes] = useState<Record<string, string>>({});
+  const [dayEventFeedback, setDayEventFeedback] = useState<Record<string, string>>({});
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [feedbackSaved, setFeedbackSaved] = useState(false);
+  const [dayReflections, setDayReflections] = useState<Record<string, string>>({});
+  const [dayHappiness, setDayHappiness] = useState<Record<string, number>>({});
+  const [dayBedtimes, setDayBedtimes] = useState<Record<string, string>>({});
+  const [dayWakeTimes, setDayWakeTimes] = useState<Record<string, string>>({});
   const [isSavingProgress, setIsSavingProgress] = useState(false);
   const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -321,7 +361,16 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
       programDayId: currentDay.id,
       videoWatched: getVideoWatched(currentDay),
       checklistCompleted: updated,
-      isCompleted: autoComplete || !!currentDay.userProgress?.isCompleted,
+      isCompleted: autoComplete,
+      selectedWorkout: dayWorkouts[currentDay.id] || currentDay.userProgress?.selectedWorkout || undefined,
+      photoBeforeUrl: dayPhotosBefore[currentDay.id] || currentDay.userProgress?.photoBeforeUrl || undefined,
+      photoAfterUrl: dayPhotosAfter[currentDay.id] || currentDay.userProgress?.photoAfterUrl || undefined,
+      mealCompliance: dayMealCompliance[currentDay.id] || currentDay.userProgress?.mealCompliance || undefined,
+      mealNotes: dayMealNotes[currentDay.id] !== undefined ? dayMealNotes[currentDay.id] : currentDay.userProgress?.mealNotes || undefined,
+      dailyReflection: dayReflections[currentDay.id] !== undefined ? dayReflections[currentDay.id] : currentDay.userProgress?.dailyReflection || undefined,
+      happinessRate: dayHappiness[currentDay.id] || currentDay.userProgress?.happinessRate || undefined,
+      bedtime: dayBedtimes[currentDay.id] || currentDay.userProgress?.bedtime || undefined,
+      wakeTime: dayWakeTimes[currentDay.id] || currentDay.userProgress?.wakeTime || undefined,
       assessmentResponse:
         dayAssessments[currentDay.id] !== undefined
           ? dayAssessments[currentDay.id]
@@ -342,11 +391,208 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
     if (autoComplete) {
       setActionNotice({
         type: "success",
-        text: `Day ${currentDay.dayNumber} completed.`,
+        text: `Day ${currentDay.dayNumber} checklist completed.`,
       });
       setTimeout(() => setActionNotice(null), 3500);
     }
-    router.refresh();
+  };
+
+  const handleSaveSleep = async (
+    bedtime: string,
+    wakeTime: string,
+    sleepDurationMinutes: number
+  ) => {
+    if (!currentDay) return;
+    setDayBedtimes((prev) => ({ ...prev, [currentDay.id]: bedtime }));
+    setDayWakeTimes((prev) => ({ ...prev, [currentDay.id]: wakeTime }));
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      bedtime,
+      wakeTime,
+      sleepDurationMinutes,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to save sleep log." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({ type: "success", text: "Sleep log saved successfully." });
+      setTimeout(() => setActionNotice(null), 3000);
+    }
+  };
+
+  const handleSelectWorkout = async (workout: string) => {
+    if (!currentDay) return;
+    setDayWorkouts((prev) => ({ ...prev, [currentDay.id]: workout }));
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      selectedWorkout: workout,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to select workout discipline." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({ type: "success", text: `Workout selected: ${workout}` });
+      setTimeout(() => setActionNotice(null), 2500);
+    }
+  };
+
+  const handleUploadPhoto = async (type: "before" | "after", base64OrUrl: string) => {
+    if (!currentDay) return;
+    if (type === "before") {
+      setDayPhotosBefore((prev) => ({ ...prev, [currentDay.id]: base64OrUrl }));
+    } else {
+      setDayPhotosAfter((prev) => ({ ...prev, [currentDay.id]: base64OrUrl }));
+    }
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      photoBeforeUrl: type === "before" ? base64OrUrl : undefined,
+      photoAfterUrl: type === "after" ? base64OrUrl : undefined,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to upload progress photo." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({
+        type: "success",
+        text: type === "before" ? "Before photo uploaded successfully." : "After photo uploaded successfully.",
+      });
+      setTimeout(() => setActionNotice(null), 3000);
+    }
+  };
+
+  const handleSaveWorkoutNotes = async (notes: string) => {
+    if (!currentDay) return;
+    setDayWorkoutNotes((prev) => ({ ...prev, [currentDay.id]: notes }));
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      workoutNotes: notes,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to save workout notes." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({ type: "success", text: "Training notes saved successfully." });
+      setTimeout(() => setActionNotice(null), 3000);
+    }
+  };
+
+  const handleUpdateChecklistRep = async (task: string, repVal: string) => {
+    if (!currentDay) return;
+    const taskName = task.includes("=") ? task.split("=")[0].trim() : task.trim();
+    const currentList = getCheckedItems(currentDay);
+
+    const filtered = currentList.filter((item) => {
+      const iName = item.includes("=") ? item.split("=")[0].trim() : item.trim();
+      return iName.toLowerCase() !== taskName.toLowerCase() && item !== task;
+    });
+
+    const formattedItem = repVal.trim() ? `${taskName} = ${repVal.trim()}` : task;
+    const nextList = [...filtered, formattedItem];
+    setDayChecklists((prev) => ({ ...prev, [currentDay.id]: nextList }));
+
+    await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: nextList,
+      videoWatched: getVideoWatched(currentDay),
+    });
+  };
+
+  const handleSaveEventFeedback = async (feedbackText: string) => {
+    if (!currentDay) return;
+    setIsSavingFeedback(true);
+    setFeedbackSaved(false);
+    try {
+      setDayEventFeedback((prev) => ({ ...prev, [currentDay.id]: feedbackText }));
+
+      const res = await wellnessUserSubmitDayProgress({
+        programDayId: currentDay.id,
+        isCompleted: !!currentDay.userProgress?.isCompleted,
+        checklistCompleted: getCheckedItems(currentDay),
+        videoWatched: getVideoWatched(currentDay),
+        eventFeedback: feedbackText,
+      });
+
+      if (!res.success) {
+        setActionNotice({ type: "error", text: res.message || "Failed to save event feedback." });
+        setTimeout(() => setActionNotice(null), 4000);
+      } else {
+        setFeedbackSaved(true);
+        setActionNotice({ type: "success", text: "Event feedback saved successfully." });
+        setTimeout(() => {
+          setFeedbackSaved(false);
+          setActionNotice(null);
+        }, 3000);
+      }
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  };
+
+  const handleSaveMeal = async (compliance: string, notes: string) => {
+    if (!currentDay) return;
+    setDayMealCompliance((prev) => ({ ...prev, [currentDay.id]: compliance }));
+    setDayMealNotes((prev) => ({ ...prev, [currentDay.id]: notes }));
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      mealCompliance: compliance,
+      mealNotes: notes,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to save nutrition notes." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({ type: "success", text: "Nutrition notes saved successfully." });
+      setTimeout(() => setActionNotice(null), 3000);
+    }
+  };
+
+  const handleSaveReflection = async (reflection: string, happinessRate: number) => {
+    if (!currentDay) return;
+    setDayReflections((prev) => ({ ...prev, [currentDay.id]: reflection }));
+    setDayHappiness((prev) => ({ ...prev, [currentDay.id]: happinessRate }));
+
+    const res = await wellnessUserSubmitDayProgress({
+      programDayId: currentDay.id,
+      isCompleted: !!currentDay.userProgress?.isCompleted,
+      checklistCompleted: getCheckedItems(currentDay),
+      videoWatched: getVideoWatched(currentDay),
+      dailyReflection: reflection,
+      happinessRate,
+    });
+
+    if (!res.success) {
+      setActionNotice({ type: "error", text: res.message || "Failed to save Dear Diary reflection." });
+      setTimeout(() => setActionNotice(null), 4000);
+    } else {
+      setActionNotice({ type: "success", text: "Dear Diary & Daily Fulfillment saved." });
+      setTimeout(() => setActionNotice(null), 3000);
+    }
   };
 
   const handleSaveAssessment = async () => {
@@ -439,6 +685,16 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
     programId: string,
     mode: "IN_PERSON" | "VIRTUAL" = "VIRTUAL"
   ) => {
+    const targetProg = allPrograms.find((p) => p.id === programId);
+    if (targetProg && targetProg.status === "COMING_SOON") {
+      setActionNotice({
+        type: "error",
+        text: "This program is Coming Soon. Registration will open shortly. Please join the Waitlist.",
+      });
+      setTimeout(() => setActionNotice(null), 4000);
+      return;
+    }
+
     setEnrollingId(programId);
     try {
       const res = await wellnessEnrollProgram(programId, mode);
@@ -600,139 +856,139 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
   };
 
   return (
-    <div className="min-h-screen text-zinc-900 dark:text-zinc-100 flex flex-col relative overflow-x-hidden silver-orange-canvas">
-      {/* Top Glassmorphic Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex justify-center px-4 pt-3 pwa-header-safe pointer-events-none">
-        <div className="pointer-events-auto blur-dock rounded-2xl px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-3 sm:gap-6 w-full max-w-6xl shadow-lg border border-white/60 dark:border-white/10 backdrop-blur-2xl">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <span className="w-8 h-8 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 flex items-center justify-center font-bold text-xs shadow-sm">
-              W
-            </span>
-            <span className="font-semibold text-sm text-zinc-900 dark:text-white hidden xs:inline">
-              Wellness
-            </span>
-          </Link>
+    <div className="min-h-screen text-zinc-900 dark:text-zinc-100 flex flex-col relative overflow-x-hidden silver-mint-canvas font-mono">
+      {/* Top Floating Glassmorphic Navigation Dock */}
+      <header
+        style={{ top: "max(1.25rem, env(safe-area-inset-top))" }}
+        className="fixed left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-5xl h-14 px-5 sm:px-6 rounded-full blur-dock flex items-center justify-between border border-zinc-200/70 dark:border-white/15 shadow-xl transition-all duration-300 font-mono"
+      >
+        <Link href="/" className="flex items-center gap-2 group shrink-0">
+          <span className="w-2 h-2 rounded-full bg-gradient-to-tr from-zinc-300 via-white to-zinc-500 shadow-sm border border-white/60 group-hover:scale-125 transition-transform" />
+          <span className="font-extralight text-xs uppercase tracking-[0.34em] text-zinc-900 dark:text-white font-geometric">
+            BMS
+          </span>
+        </Link>
 
-          {/* Desktop Navigation (3 Menus: My Plan, All Plan, Setting) */}
-          <nav className="hidden sm:flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => setActiveTab("my_plan")}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                activeTab === "my_plan"
-                  ? "chrome-button shadow-md"
-                  : "text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>My Plan</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("all_plan")}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                activeTab === "all_plan"
-                  ? "chrome-button shadow-md"
-                  : "text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>All Plan</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("setting")}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 ${
-                activeTab === "setting"
-                  ? "chrome-button shadow-md"
-                  : "text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5"
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Setting</span>
-            </button>
-          </nav>
+        {/* Desktop Navigation (3 Menus: My Ritual, Cohorts, Settings) */}
+        <nav className="hidden sm:flex items-center gap-1.5 shrink-0 text-xs font-mono font-medium">
+          <button
+            onClick={() => setActiveTab("my_plan")}
+            className={`px-4 py-1.5 rounded-full text-xs transition duration-200 flex items-center gap-2 ${
+              activeTab === "my_plan"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>My Ritual</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("all_plan")}
+            className={`px-4 py-1.5 rounded-full text-xs transition duration-200 flex items-center gap-2 ${
+              activeTab === "all_plan"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+            }`}
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Cohorts</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("setting")}
+            className={`px-4 py-1.5 rounded-full text-xs transition duration-200 flex items-center gap-2 ${
+              activeTab === "setting"
+                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
+            }`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+        </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <ThemeToggle />
+        <div className="flex items-center gap-2.5 shrink-0">
+          <ThemeToggle />
 
-            {user.role === "SUPERADMIN" && (
-              <Link
-                href="/admin"
-                className="px-3 py-1.5 sm:py-2 rounded-xl glass-panel-subtle text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:bg-white/60 dark:hover:bg-white/10 transition flex items-center gap-1.5"
-                title="Admin Console"
-              >
-                <Shield className="w-3.5 h-3.5 text-orange-500" />
-                <span className="hidden md:inline">Admin</span>
-              </Link>
-            )}
-
-            <button
-              onClick={handleSignOut}
-              title="Sign Out"
-              className="p-2 rounded-xl text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition"
+          {user.role === "SUPERADMIN" && (
+            <Link
+              href="/admin"
+              className="px-3 py-1.5 rounded-full glass-panel-subtle text-[11px] font-medium text-zinc-900 dark:text-zinc-100 hover:bg-white/60 dark:hover:bg-white/10 transition inline-flex items-center gap-1.5 font-mono"
+              title="Admin Console"
             >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+              <Shield className="w-3 h-3 text-zinc-300" />
+              <span className="hidden md:inline">Admin</span>
+            </Link>
+          )}
+
+          <button
+            onClick={handleSignOut}
+            title="Sign Out"
+            className="p-2 rounded-full text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+          </button>
         </div>
       </header>
 
-      {/* Mobile-First Bottom Navigation Dock (sm:hidden) */}
-      <nav className="fixed bottom-3 left-4 right-4 z-40 sm:hidden flex justify-center pointer-events-none pwa-bottom-safe">
-        <div className="pointer-events-auto blur-dock rounded-2xl p-1.5 flex items-center justify-around w-full max-w-sm shadow-2xl border border-white/70 dark:border-white/10 backdrop-blur-2xl">
-          <button
-            type="button"
-            onClick={() => setActiveTab("my_plan")}
-            className={`flex-1 py-2 px-2 rounded-xl flex flex-col items-center justify-center gap-1 transition ${
-              activeTab === "my_plan"
-                ? "chrome-button shadow-sm"
-                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            <span className="text-[10px] font-semibold tracking-tight">My Plan</span>
-          </button>
+      {/* Mobile-First Bottom Floating Dock (sm:hidden) */}
+      <nav
+        style={{ bottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        className="fixed left-1/2 -translate-x-1/2 z-50 sm:hidden w-[90%] max-w-sm h-14 rounded-full blur-dock px-3 flex items-center justify-around border border-zinc-200/70 dark:border-white/15 shadow-2xl"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("my_plan")}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+            activeTab === "my_plan"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+              : "text-zinc-500 dark:text-zinc-400"
+          }`}
+        >
+          <Calendar className="w-3.5 h-3.5" />
+          <span className="text-[11px]">Ritual</span>
+        </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("all_plan")}
-            className={`flex-1 py-2 px-2 rounded-xl flex flex-col items-center justify-center gap-1 transition ${
-              activeTab === "all_plan"
-                ? "chrome-button shadow-sm"
-                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-            }`}
-          >
-            <Compass className="w-4 h-4" />
-            <span className="text-[10px] font-semibold tracking-tight">All Plan</span>
-          </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("all_plan")}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+            activeTab === "all_plan"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+              : "text-zinc-500 dark:text-zinc-400"
+          }`}
+        >
+          <Compass className="w-3.5 h-3.5" />
+          <span className="text-[11px]">Cohorts</span>
+        </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("setting")}
-            className={`flex-1 py-2 px-2 rounded-xl flex flex-col items-center justify-center gap-1 transition ${
-              activeTab === "setting"
-                ? "chrome-button shadow-sm"
-                : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span className="text-[10px] font-semibold tracking-tight">Setting</span>
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab("setting")}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium transition flex items-center gap-1.5 ${
+            activeTab === "setting"
+              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-sm"
+              : "text-zinc-500 dark:text-zinc-400"
+          }`}
+        >
+          <Sliders className="w-3.5 h-3.5" />
+          <span className="text-[11px]">Settings</span>
+        </button>
       </nav>
 
-      {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-36 sm:pb-24 flex-1 w-full space-y-6">
+      {/* Main Content Area with Generous Luxury Negative Space */}
+      <main className="max-w-5xl mx-auto px-5 sm:px-8 pt-28 sm:pt-36 pb-36 sm:pb-32 flex-1 w-full space-y-10 sm:space-y-14">
         {actionNotice && (
           <div
-            className={`glass-panel p-4 rounded-2xl text-xs font-medium flex items-center gap-2.5 animate-in fade-in border ${
+            className={`glass-panel p-4 rounded-2xl text-xs font-medium flex items-center gap-2.5 animate-in fade-in border shadow-lg ${
               actionNotice.type === "error"
                 ? "border-red-500/30 text-red-700 dark:text-red-300"
-                : "border-emerald-500/30 text-emerald-800 dark:text-emerald-300"
+                : "border-white/30 text-zinc-900 dark:text-white"
             }`}
           >
             {actionNotice.type === "error" ? (
               <AlertTriangle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
             ) : (
-              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <CheckCircle className="w-4 h-4 text-zinc-200 shrink-0" />
             )}
             <span>{actionNotice.text}</span>
           </div>
@@ -740,10 +996,10 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
         {/* TAB 1: DAILY CURRICULUM & BENTO GRID (ONLY ENROLLED COHORTS) */}
         {activeTab === "my_plan" && (
-          <div className="space-y-6">
+          <div className="space-y-10 sm:space-y-12">
             {!currentProgram ? (
               /* Empty state if user has NOT enrolled in any program yet */
-              <div className="relative rounded-3xl overflow-hidden glass-panel border border-white/60 dark:border-white/10 p-8 sm:p-14 text-center flex flex-col items-center justify-center space-y-5 shadow-xl min-h-[380px]">
+              <div className="relative rounded-3xl overflow-hidden glass-panel border border-zinc-200/70 dark:border-white/10 p-10 sm:p-16 text-center flex flex-col items-center justify-center space-y-6 shadow-2xl min-h-[420px]">
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                   <Image
                     src="/test.jpg"
@@ -752,29 +1008,28 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     className="object-cover scale-105 opacity-20 dark:opacity-10"
                   />
                 </div>
-                <div className="w-16 h-16 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-500 flex items-center justify-center relative z-10 shadow-sm">
+                <div className="w-16 h-16 rounded-full glass-panel-subtle border border-zinc-200/60 dark:border-white/10 text-zinc-400 flex items-center justify-center relative z-10 shadow-sm">
                   <Calendar className="w-8 h-8" />
                 </div>
-                <div className="space-y-2 max-w-md relative z-10">
-                  <span className="text-[10px] font-semibold px-3 py-1 rounded-full glass-image-overlay uppercase tracking-wider text-orange-400">
-                    No Enrolled Plan
+                <div className="space-y-2.5 max-w-md relative z-10 font-mono">
+                  <span className="text-micro text-zinc-500 dark:text-zinc-400 block tracking-[0.24em] uppercase font-semibold">
+                    No Enrolled Cohort
                   </span>
-                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                  <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-geometric">
                     You haven&apos;t joined a cohort yet.
                   </h2>
-                  <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    My Plan exclusively displays the cohorts you are participating in. Explore our active curriculums to unlock your daily workout videos, meal plans, and community channel.
+                  <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-light leading-relaxed font-mono">
+                    My Ritual exclusively displays the cohorts you are participating in. Explore our curated active curriculums to unlock your daily movement protocols, whole food plans, and community channel.
                   </p>
                 </div>
-                <div className="relative z-10 pt-2">
+                <div className="relative z-10 pt-2 font-mono">
                   <button
                     type="button"
                     onClick={() => setActiveTab("all_plan")}
-                    className="px-6 py-3 rounded-2xl chrome-button text-xs font-semibold inline-flex items-center gap-2 shadow-lg"
+                    className="px-7 py-3 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-2 shadow-xl transition duration-200"
                   >
-                    <Compass className="w-4 h-4" />
-                    <span>Explore All Plans</span>
-                    <ArrowRight className="w-4 h-4" />
+                    <span>Explore Cohorts</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -782,7 +1037,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
               <>
                 {/* Cohort Switcher (ONLY shown if user is enrolled in multiple programs) */}
                 {myEnrolledPrograms.length > 1 && (
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none font-mono">
                     <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0">
                       Your Cohorts:
                     </span>
@@ -809,76 +1064,71 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                   </div>
                 )}
 
-                {/* Top 12-Column Glassmorphic Bento Header */}
-                <div className="grid lg:grid-cols-12 gap-5 items-stretch">
+                {/* Top 12-Column Editorial Bento Header */}
+                <div className="grid lg:grid-cols-12 gap-6 items-stretch font-mono">
                   {/* Program Overview Card with Full Background Image (7 Columns) */}
-                  <div className="lg:col-span-7 relative rounded-3xl overflow-hidden glass-panel border border-white/60 dark:border-white/10 p-6 sm:p-8 flex flex-col justify-between group shadow-xl min-h-[260px]">
+                  <div className="lg:col-span-7 relative rounded-3xl overflow-hidden glass-panel border border-zinc-200/70 dark:border-white/10 p-7 sm:p-9 flex flex-col justify-between group shadow-xl min-h-[300px]">
                     <div className="absolute inset-0 overflow-hidden pointer-events-none">
                       <Image
                         src="/test.jpg"
                         alt=""
                         fill
-                        className="object-cover object-center scale-105 group-hover:scale-110 transition-transform duration-700"
+                        className="object-cover object-center scale-100 group-hover:scale-105 transition-transform duration-700 ease-out"
                       />
                     </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/45 to-black/30 pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/30 pointer-events-none" />
 
-                    <div className="space-y-3 relative z-10 text-white">
+                    <div className="space-y-3 relative z-10 text-white font-mono">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full glass-image-overlay uppercase tracking-wider text-orange-300">
-                          My Enrolled Cohort
+                        <span className="text-micro px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 uppercase tracking-[0.2em] text-white">
+                          Active Cohort
                         </span>
                         {hasActiveAccess ? (
-                          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 backdrop-blur-md">
-                            Active Member
+                          <span className="text-micro px-3 py-1 rounded-full chrome-badge text-white uppercase tracking-wider">
+                            Active Access
                           </span>
                         ) : (
-                          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 backdrop-blur-md">
-                            Payment Required
+                          <span className="text-micro px-3 py-1 rounded-full bg-zinc-800/80 text-zinc-300 border border-white/10 backdrop-blur-md uppercase tracking-wider">
+                            Tuition Pending
                           </span>
                         )}
 
                         {currentProgram.locationType === "ONSITE" && (
-                          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-amber-500/25 text-amber-200 border border-amber-400/30 backdrop-blur-md flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-amber-300" />
+                          <span className="text-micro px-3 py-1 rounded-full bg-white/15 text-zinc-200 border border-white/20 backdrop-blur-md flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3 text-zinc-300" />
                             <span>On-Site • {currentProgram.city || "Studio"}</span>
                           </span>
                         )}
 
                         {currentProgram.locationType === "HYBRID" && (
-                          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-purple-500/25 text-purple-200 border border-purple-400/30 backdrop-blur-md flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-purple-300" />
-                            <span>Hybrid • {currentProgram.city || "Studio"} & Live Stream</span>
+                          <span className="text-micro px-3 py-1 rounded-full bg-white/15 text-zinc-200 border border-white/20 backdrop-blur-md flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3 text-zinc-300" />
+                            <span>Hybrid • {currentProgram.city || "Studio"}</span>
                           </span>
                         )}
 
                         {(!currentProgram.locationType || currentProgram.locationType === "ONLINE") && (
-                          <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-blue-500/25 text-blue-200 border border-blue-400/30 backdrop-blur-md">
-                            🌐 100% Online Cohort
+                          <span className="text-micro px-3 py-1 rounded-full bg-white/15 text-zinc-200 border border-white/20 backdrop-blur-md">
+                            Online Sanctuary
                           </span>
                         )}
                       </div>
 
-                      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white leading-tight font-geometric">
                         {currentProgram.title}
                       </h1>
 
-                      <div className="flex flex-wrap items-center gap-4 text-xs text-zinc-200">
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-300 font-light font-mono">
                         {currentProgram.coachName && (
-                          <span className="flex items-center gap-1.5">
-                            <User className="w-3.5 h-3.5 text-orange-400" />
-                            <span>Lead: <strong className="font-semibold text-white">{currentProgram.coachName}</strong></span>
-                          </span>
+                          <span>Lead: <strong className="font-normal text-white">{currentProgram.coachName}</strong></span>
                         )}
-                        <span className="flex items-center gap-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-orange-400" />
-                          <span>{formatShortDate(currentProgram.startDate)} – {formatShortDate(currentProgram.endDate)}</span>
-                        </span>
+                        <span>•</span>
+                        <span>{formatShortDate(currentProgram.startDate)} – {formatShortDate(currentProgram.endDate)}</span>
                         {currentProgram.venueAddress && (
-                          <span className="flex items-center gap-1.5 text-amber-200">
-                            <MapPin className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Venue: {currentProgram.venueAddress}</span>
-                          </span>
+                          <>
+                            <span>•</span>
+                            <span className="text-zinc-300">Venue: {currentProgram.venueAddress}</span>
+                          </>
                         )}
                       </div>
                     </div>
@@ -891,7 +1141,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                             setSelectedProgId(e.target.value);
                             setActiveDayIndex(0);
                           }}
-                          className="px-3.5 py-2 rounded-xl glass-image-overlay text-white text-xs font-medium border border-white/20 focus:outline-none"
+                          className="px-4 py-2 rounded-full glass-image-overlay text-white text-xs font-medium border border-white/20 focus:outline-none"
                         >
                           {myEnrolledPrograms.map((p) => (
                             <option
@@ -911,7 +1161,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                             type="button"
                             onClick={() => handleOpenQrisCheckout(currentProgram.id)}
                             disabled={enrollingId === currentProgram.id}
-                            className="px-4 py-2 rounded-xl chrome-button text-xs font-semibold flex items-center gap-2 shadow-lg"
+                            className="px-6 py-2.5 rounded-full bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold tracking-wide flex items-center gap-2 shadow-xl transition"
                           >
                             {enrollingId === currentProgram.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -928,84 +1178,88 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
                   {/* Right 2x2 Summary Metrics Bento Grid (5 Columns) */}
                   <div className="lg:col-span-5 grid grid-cols-2 gap-4">
-                    <div className="glass-panel p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
-                      <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium">
+                    <div className="glass-panel p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden border border-zinc-200/70 dark:border-white/10 shadow-lg">
+                      <span className="text-micro text-zinc-400 block tracking-[0.2em] uppercase">
                         Current Day
                       </span>
-                      <p className="text-2xl font-bold text-zinc-900 dark:text-white my-1">
-                        Day {currentActiveCalendarDay?.dayNumber || 1}{" "}
-                        <span className="text-xs font-normal text-zinc-500">/ {totalDays}</span>
+                      <p className="text-3xl sm:text-4xl font-light tracking-tight text-zinc-900 dark:text-white my-2">
+                        Day {currentActiveCalendarDay?.dayNumber || 1}
+                        <span className="text-xs font-light text-zinc-400 ml-1.5">/ {totalDays}</span>
                       </p>
-                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                      <span className="text-micro text-zinc-400">
                         00:00 Daily Unlock
                       </span>
                     </div>
 
-                    <div className="glass-panel p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
-                      <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium">
+                    <div className="glass-panel p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden border border-zinc-200/70 dark:border-white/10 shadow-lg">
+                      <span className="text-micro text-zinc-400 block tracking-[0.2em] uppercase">
                         Completed
                       </span>
-                      <p className="text-2xl font-bold text-zinc-900 dark:text-white my-1">
-                        {completedDaysCount}{" "}
-                        <span className="text-xs font-normal text-zinc-500">Days</span>
+                      <p className="text-3xl sm:text-4xl font-light tracking-tight text-zinc-900 dark:text-white my-2">
+                        {completedDaysCount}
+                        <span className="text-xs font-light text-zinc-400 ml-1.5">Days</span>
                       </p>
-                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                        {totalDays > 0 ? Math.round((completedDaysCount / totalDays) * 100) : 0}% Done
+                      <span className="text-micro text-zinc-900 dark:text-zinc-200 font-medium font-mono">
+                        {totalDays > 0 ? Math.round((completedDaysCount / totalDays) * 100) : 0}% Protocol Done
                       </span>
                     </div>
 
-                    <div className="glass-panel p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
-                      <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium">
-                        Skipped Days
+                    <div className="glass-panel p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden border border-zinc-200/70 dark:border-white/10 shadow-lg">
+                      <span className="text-micro text-zinc-400 block tracking-[0.2em] uppercase">
+                        Skipped
                       </span>
-                      <p className="text-2xl font-bold text-zinc-900 dark:text-white my-1">
-                        {skippedDaysCount}{" "}
-                        <span className="text-xs font-normal text-zinc-500">Missed</span>
+                      <p className="text-3xl sm:text-4xl font-light tracking-tight text-zinc-900 dark:text-white my-2 font-geometric">
+                        {skippedDaysCount}
+                        <span className="text-xs font-light text-zinc-400 ml-1.5 font-mono">Missed</span>
                       </p>
-                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                      <span className="text-micro text-zinc-500 font-mono">
                         23:59 Cutoff
                       </span>
                     </div>
 
-                    <div className="glass-panel p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
-                      <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium">
-                        Community
+                    <div className="glass-panel p-6 rounded-3xl flex flex-col justify-between relative overflow-hidden border border-zinc-200/70 dark:border-white/10 shadow-lg font-mono">
+                      <span className="text-micro text-zinc-400 block tracking-[0.2em] uppercase">
+                        Sanctuary
                       </span>
                       {currentProgram.communityLink && hasActiveAccess ? (
                         <a
                           href={currentProgram.communityLink}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="my-1 inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-900 dark:text-white hover:underline"
+                          className="my-2 inline-flex items-center gap-1.5 text-base font-light text-zinc-900 dark:text-white hover:text-zinc-400 transition"
                         >
-                          <MessageCircle className="w-4 h-4" />
-                          <span>Join Group</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
+                          <span>Join Circle</span>
+                          <ExternalLink className="w-3.5 h-3.5 opacity-60" />
                         </a>
                       ) : (
-                        <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400 my-1">
+                        <p className="text-base font-light text-zinc-400 my-2">
                           {hasActiveAccess ? "Active" : "Locked"}
                         </p>
                       )}
-                      <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                        Discussion Channel
+                      <span className="text-micro text-zinc-400">
+                        Private Group
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Day Selector Timeline */}
-                <div className="glass-panel p-4 sm:p-5 rounded-3xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
-                      Daily Schedule
-                    </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      Complete video & checklist by 23:59 daily
+                <div className="glass-panel p-6 sm:p-7 rounded-3xl space-y-4 border border-zinc-200/70 dark:border-white/10 shadow-xl font-mono">
+                  <div className="flex items-center justify-between border-b border-zinc-900/[0.06] dark:border-white/10 pb-4">
+                    <div className="space-y-0.5">
+                      <span className="text-micro text-zinc-500 dark:text-zinc-400 block tracking-[0.24em] uppercase font-mono">
+                        Curriculum Track
+                      </span>
+                      <h3 className="text-base sm:text-lg font-bold tracking-tight text-zinc-900 dark:text-white font-geometric">
+                        Daily Schedule
+                      </h3>
+                    </div>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400 font-light font-mono">
+                      23:59 Daily Streak Cutoff
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+                  <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-none font-mono">
                     {currentProgram.days.map((day, idx) => {
                       const isSelected = activeDayIndex === idx;
                       const isCompleted = !!day.userProgress?.isCompleted;
@@ -1018,51 +1272,45 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                           key={day.id}
                           type="button"
                           onClick={() => setActiveDayIndex(idx)}
-                          className={`px-4 py-3 rounded-2xl text-left shrink-0 flex items-center gap-3 transition ${
+                          className={`min-w-[120px] p-4 rounded-2xl border text-left transition-all duration-200 flex flex-col justify-between shrink-0 gap-3 font-mono ${
                             isSelected
-                              ? "chrome-button shadow-md"
-                              : "glass-panel-subtle text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white"
+                              ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-transparent shadow-xl scale-[1.02]"
+                              : isCompleted
+                              ? "glass-panel-subtle border-white/30 text-zinc-700 dark:text-zinc-200"
+                              : isSkipped
+                              ? "glass-panel-subtle border-zinc-300 dark:border-white/10 text-zinc-500 opacity-60"
+                              : isLockedFuture
+                              ? "glass-panel-subtle border-zinc-200/40 dark:border-white/5 text-zinc-400 opacity-60"
+                              : "glass-panel-subtle border-zinc-200/60 dark:border-white/10 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300"
                           }`}
                         >
-                          <div>
-                            <div className="text-xs font-semibold flex items-center gap-1.5">
-                              <span>Day {day.dayNumber}</span>
-                              {isToday && (
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded-md font-medium ${
-                                    isSelected
-                                      ? "bg-white/20 text-white dark:bg-black/15 dark:text-zinc-900"
-                                      : "bg-zinc-200 dark:bg-white/10 text-zinc-700 dark:text-zinc-300"
-                                  }`}
-                                >
-                                  Today
-                                </span>
-                              )}
-                            </div>
-                            <span className="text-xs opacity-75 block">
+                          <div className="flex items-center justify-between w-full">
+                            <span className="text-micro uppercase tracking-wider font-semibold">
+                              Day {day.dayNumber}
+                            </span>
+                            {isCompleted ? (
+                              <CheckCircle className={`w-3.5 h-3.5 ${isSelected ? "text-white dark:text-zinc-950" : "text-zinc-200"}`} />
+                            ) : isSkipped ? (
+                              <AlertTriangle className="w-3.5 h-3.5 text-zinc-400" />
+                            ) : isLockedFuture ? (
+                              <Lock className="w-3.5 h-3.5 opacity-60" />
+                            ) : (
+                              <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : isToday ? "bg-white animate-pulse" : "bg-zinc-400"}`} />
+                            )}
+                          </div>
+
+                          <div className="space-y-0.5">
+                            <span className="text-[11px] block truncate font-medium">
+                              {day.dayType === "TRAINING_DAY"
+                                ? "Training"
+                                : day.dayType === "REST_DAY"
+                                ? "Recovery"
+                                : "Connection"}
+                            </span>
+                            <span className="text-[10px] opacity-70 block font-light">
                               {formatShortDate(day.unlockDate)}
                             </span>
                           </div>
-
-                          {isCompleted ? (
-                            <CheckCircle
-                              className={`w-4 h-4 ${
-                                isSelected ? "text-current" : "text-emerald-600 dark:text-emerald-400"
-                              }`}
-                            />
-                          ) : isSkipped ? (
-                            <span title="Skipped Day (Missed 23:59 cutoff)">
-                              <AlertTriangle
-                                className={`w-4 h-4 ${
-                                  isSelected ? "text-amber-300 dark:text-amber-600" : "text-amber-500"
-                                }`}
-                              />
-                            </span>
-                          ) : isLockedFuture ? (
-                            <Lock className="w-3.5 h-3.5 opacity-60" />
-                          ) : (
-                            <span className="w-2 h-2 rounded-full bg-current opacity-60" />
-                          )}
                         </button>
                       );
                     })}
@@ -1071,34 +1319,34 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
                 {/* Daily Content Bento Grid */}
                 {currentDay && (
-                  <div className="space-y-5">
+                  <div className="space-y-6 sm:space-y-8">
                     {/* Day Title Banner */}
-                    <div className="glass-panel rounded-3xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-                            Day {currentDay.dayNumber} • {formatShortDate(currentDay.unlockDate)}
+                    <div className="glass-panel rounded-3xl p-7 sm:p-9 border border-zinc-200/70 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500">
+                            Day {currentDay.dayNumber} &bull; {formatShortDate(currentDay.unlockDate)}
                           </span>
-                          <span className="text-xs font-medium px-2.5 py-0.5 rounded-full glass-panel-subtle text-zinc-800 dark:text-zinc-200">
+                          <span className="text-micro uppercase tracking-[0.18em] font-semibold px-3 py-1 rounded-full glass-panel-subtle text-zinc-700 dark:text-zinc-300">
                             {currentDay.dayType === "TRAINING_DAY"
-                              ? "Workout Day"
+                              ? "Training &bull; Movement Sequence"
                               : currentDay.dayType === "REST_DAY"
-                              ? "Rest Day"
-                              : "On-Site Session"}
+                              ? "Recovery &bull; Parasympathetic"
+                              : "Connection &bull; Live Circle"}
                           </span>
                         </div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
+                        <h2 className="text-2xl sm:text-3xl font-light tracking-tight text-zinc-900 dark:text-white font-geometric">
                           {currentDay.title}
                         </h2>
                         {currentDay.dayType !== "REST_DAY" && (currentDay.coachName || currentDay.recommendedFor) && (
-                          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs font-mono">
                             {currentDay.coachName && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 font-medium">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full chrome-badge text-micro uppercase tracking-wider font-semibold font-mono">
                                 Coach: {currentDay.coachName}
                               </span>
                             )}
                             {currentDay.recommendedFor && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-zinc-900/5 dark:bg-white/10 text-zinc-600 dark:text-zinc-300">
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-900/5 dark:bg-white/5 text-zinc-600 dark:text-zinc-400 text-micro uppercase tracking-wider font-medium font-mono">
                                 Target: {currentDay.recommendedFor}
                               </span>
                             )}
@@ -1106,17 +1354,17 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0 font-mono">
                         {currentDay.userProgress?.isCompleted ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 border border-emerald-500/20 px-3.5 py-1.5 rounded-full">
-                            <CheckCircle className="w-4 h-4" /> Completed
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-zinc-900 dark:text-white bg-white/10 border border-white/20 px-4 py-2 rounded-full">
+                            <CheckCircle className="w-4 h-4 text-white" /> Day Completed
                           </span>
                         ) : currentDay.isSkipped ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-500/15 border border-amber-500/20 px-3.5 py-1.5 rounded-full">
-                            <AlertTriangle className="w-4 h-4" /> Skipped Day
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600 dark:text-zinc-400 glass-panel-subtle border border-zinc-200/60 dark:border-white/10 px-4 py-2 rounded-full">
+                            <AlertTriangle className="w-4 h-4 text-zinc-400" /> Past Cutoff
                           </span>
                         ) : !currentDay.isCalendarUnlocked ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 glass-panel-subtle px-3.5 py-1.5 rounded-full">
+                          <span className="inline-flex items-center gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400 glass-panel-subtle px-4 py-2 rounded-full">
                             <Lock className="w-3.5 h-3.5" /> Unlocks {formatShortDate(currentDay.unlockDate)} at 00:00
                           </span>
                         ) : null}
@@ -1128,7 +1376,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                               type="button"
                               onClick={handleToggleCompleteDay}
                               disabled={isSavingProgress}
-                              className={`px-4 py-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 ${
+                              className={`px-5 py-2.5 rounded-full text-xs font-semibold tracking-wide transition flex items-center gap-2 font-mono ${
                                 currentDay.userProgress?.isCompleted
                                   ? "glass-panel-subtle text-zinc-800 dark:text-zinc-200"
                                   : "chrome-button"
@@ -1148,363 +1396,396 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       </div>
                     </div>
 
+                    {/* Today Push Notification Schedule Banner */}
+                    {hasActiveAccess && currentDay.isCalendarUnlocked && currentDay.dayNotifications && currentDay.dayNotifications.length > 0 && (
+                      <div className="glass-panel rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs border border-zinc-200/60 dark:border-white/10 font-mono">
+                        <div className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                          <Bell className="w-4 h-4 text-zinc-400 shrink-0" />
+                          <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-900 dark:text-white font-mono">
+                            Today&apos;s Dispatch Schedule
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 font-mono">
+                          {currentDay.dayNotifications.map((notif, i) => (
+                            <span
+                              key={i}
+                              className="px-3 py-1.5 rounded-full glass-panel-subtle text-xs text-zinc-600 dark:text-zinc-300 flex items-center gap-2"
+                              title={notif.message}
+                            >
+                              <Clock className="w-3 h-3 text-zinc-400" />
+                              <strong className="text-zinc-900 dark:text-white font-medium">{notif.time}</strong>
+                              <span className="truncate max-w-[140px] sm:max-w-[220px] font-light">{notif.message}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {/* GATE 1: Unpaid User */}
                     {!hasActiveAccess ? (
-                      <div className="glass-panel rounded-3xl p-10 text-center space-y-4">
-                        <Lock className="w-6 h-6 text-zinc-500 mx-auto" />
-                        <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">
-                          Members-Only Content
-                        </h3>
-                        <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-md mx-auto leading-relaxed">
-                          Enroll in this program to unlock daily workout videos, meal recommendations, and self-assessment checklists.
-                        </p>
+                      <div className="glass-panel rounded-3xl p-10 sm:p-14 text-center space-y-5 border border-zinc-200/70 dark:border-white/10">
+                        <div className="w-12 h-12 rounded-full glass-panel-subtle flex items-center justify-center mx-auto text-zinc-400">
+                          <Lock className="w-5 h-5 stroke-[1.5]" />
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                            Member Sanctuary Protocol
+                          </span>
+                          <h3 className="text-xl sm:text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                            Members-Only Curriculum
+                          </h3>
+                          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed font-light">
+                            Enroll in this cohort to unlock daily movement sequences, circadian recovery guidance, and personalized self-assessments.
+                          </p>
+                        </div>
                         <div className="pt-2">
                           <button
                             type="button"
                             onClick={() => handleOpenQrisCheckout(currentProgram.id)}
                             disabled={enrollingId === currentProgram.id}
-                            className="px-6 py-3 rounded-xl chrome-button text-xs font-medium inline-flex items-center gap-2"
+                            className="px-8 py-3.5 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-2.5 shadow-lg"
                           >
-                            <QrCode className="w-4 h-4" /> Enroll Now (Rp{" "}
-                            {currentProgram.price.toLocaleString("id-ID")})
+                            <QrCode className="w-4 h-4" /> Enroll Now &bull; Rp{" "}
+                            {currentProgram.price.toLocaleString("id-ID")}
                           </button>
                         </div>
                       </div>
                     ) : !currentDay.isCalendarUnlocked ? (
                       /* GATE 2: Future Calendar Day */
-                      <div className="glass-panel rounded-3xl p-10 text-center space-y-3">
-                        <Clock className="w-6 h-6 text-zinc-500 mx-auto" />
-                        <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">
-                          Scheduled for {formatShortDate(currentDay.unlockDate)}
-                        </h3>
-                        <p className="text-sm text-zinc-600 dark:text-zinc-400 max-w-md mx-auto leading-relaxed">
-                          Day {currentDay.dayNumber} will unlock automatically at{" "}
-                          <strong className="text-zinc-900 dark:text-white">
-                            00:00 on {formatShortDate(currentDay.unlockDate)}
-                          </strong>{" "}
-                          according to your batch schedule.
-                        </p>
+                      <div className="glass-panel rounded-3xl p-10 sm:p-14 text-center space-y-4 border border-zinc-200/70 dark:border-white/10">
+                        <div className="w-12 h-12 rounded-full glass-panel-subtle flex items-center justify-center mx-auto text-zinc-400">
+                          <Clock className="w-5 h-5 stroke-[1.5]" />
+                        </div>
+                        <div className="space-y-2">
+                          <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                            Temporal Alignment
+                          </span>
+                          <h3 className="text-xl sm:text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                            Scheduled for {formatShortDate(currentDay.unlockDate)}
+                          </h3>
+                          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed font-light">
+                            Day {currentDay.dayNumber} unlocks at midnight (00:00 WIB) on{" "}
+                            <span className="text-zinc-900 dark:text-white font-medium">
+                              {formatShortDate(currentDay.unlockDate)}
+                            </span>{" "}
+                            in synchronization with your batch cohort.
+                          </p>
+                        </div>
                       </div>
                     ) : (
-                      /* UNLOCKED 12-COLUMN BENTO CURRICULUM GRID */
-                      <div className="grid lg:grid-cols-12 gap-5 items-start">
-                        {/* Left Column (7 Columns): Video / Rest / On-Site Visual Card */}
-                        <div className="lg:col-span-7 space-y-5">
-                          {currentDay.dayType === "TRAINING_DAY" && (
-                            <div className="glass-panel rounded-3xl p-5 sm:p-6 space-y-4">
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                                  <Video className="w-4 h-4" /> Step 1: Workout Video
-                                </span>
-                                <span className="text-xs text-zinc-500 dark:text-zinc-400 flex items-center gap-1">
-                                  <ShieldCheck className="w-3.5 h-3.5" /> Protected Stream
-                                </span>
-                              </div>
+                      /* UNLOCKED 3-PHASE CURRICULUM LAYOUT */
+                      <div className="space-y-6 sm:space-y-8">
+                        {/* 1. FASE PAGI: SLEEP & RECOVERY LOG */}
+                        <SleepTrackerCard
+                          dayNumber={currentDay.dayNumber}
+                          sleepRecommendation={currentDay.sleepRecommendation || null}
+                          initialBedtime={dayBedtimes[currentDay.id] || currentDay.userProgress?.bedtime || "22:30"}
+                          initialWakeTime={dayWakeTimes[currentDay.id] || currentDay.userProgress?.wakeTime || "06:30"}
+                          initialSleepMinutes={currentDay.userProgress?.sleepDurationMinutes}
+                          isPast2359={currentDay.isPast2359}
+                          onSaveSleep={handleSaveSleep}
+                        />
 
-                              <div
-                                onContextMenu={(e) => e.preventDefault()}
-                                className="rounded-2xl overflow-hidden aspect-video relative border border-zinc-200 dark:border-white/10 flex items-center justify-center bg-zinc-900 select-none"
-                              >
-                                {(() => {
-                                  const embed = normalizeVideoEmbed(currentDay.videoUrl);
-                                  if (embed.embedUrl) {
-                                    if (embed.provider === "DIRECT") {
-                                      return (
-                                        <video
-                                          src={embed.embedUrl}
-                                          controls
-                                          playsInline
-                                          controlsList="nodownload"
-                                          className="w-full h-full object-contain bg-black"
-                                        />
-                                      );
-                                    }
-                                    return (
-                                      <iframe
-                                        src={embed.embedUrl}
-                                        title={currentDay.title}
-                                        className="w-full h-full"
-                                        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-                                        allowFullScreen
-                                      />
-                                    );
-                                  }
-                                  return (
-                                    <div className="relative w-full h-full flex items-center justify-center group">
-                                      <Image
-                                        src="/image.jpg"
-                                        alt="Video cover"
-                                        fill
-                                        className="object-cover scale-110 blur-[2px] group-hover:blur-0 transition-all duration-700"
-                                      />
-                                      <div className="absolute inset-0 bg-black/45" />
-                                      <div className="relative z-10 text-center space-y-1 p-4 rounded-2xl glass-image-overlay">
-                                        <Play className="w-7 h-7 text-white mx-auto" />
-                                        <p className="text-xs text-white font-medium">
-                                          Protected Workout Stream
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })()}
-                              </div>
-
-                              <div className="flex items-center justify-between pt-1">
-                                <span className="text-xs text-zinc-600 dark:text-zinc-400">
-                                  Mark video as watched after finishing your session
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={handleToggleVideoWatched}
-                                  className={`px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-1.5 transition ${
-                                    getVideoWatched(currentDay)
-                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                                      : "glass-panel-subtle text-zinc-900 dark:text-zinc-100"
-                                  }`}
-                                >
-                                  <CheckCircle className="w-3.5 h-3.5" />
-                                  {getVideoWatched(currentDay)
-                                    ? "Video Watched"
-                                    : "Mark Video Watched"}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-
-                          {currentDay.dayType === "REST_DAY" && (
-                            <div className="glass-panel rounded-3xl p-5 sm:p-6 space-y-5 group">
-                              <div className="relative h-56 w-full rounded-2xl overflow-hidden bg-zinc-900">
-                                <Image
-                                  src="/image.jpg"
-                                  alt="Rest Day"
-                                  fill
-                                  className="object-cover scale-125 blur-[2.5px] group-hover:blur-0 group-hover:scale-110 transition-all duration-700"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-                                <div className="absolute bottom-4 left-4 right-4 p-4 rounded-2xl glass-image-overlay">
-                                  <span className="text-xs text-zinc-300 block">
-                                    Scheduled Recovery
-                                  </span>
-                                  <h3 className="text-base font-semibold text-white">
-                                    Active Rest & Mobility Protocol
-                                  </h3>
-                                </div>
-                              </div>
-                              <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-line">
-                                {currentDay.restInstructions ||
-                                  "Take a light 25-minute walk, focus on gentle stretching, and stay hydrated throughout the day."}
-                              </p>
-                            </div>
-                          )}
-
-                          {currentDay.dayType === "MEETUP_DAY" && (
-                            <div className="glass-panel rounded-3xl p-5 sm:p-6 space-y-5 group">
-                              <div className="relative h-52 w-full rounded-2xl overflow-hidden bg-zinc-900">
-                                <Image
-                                  src="/image.jpg"
-                                  alt="On-Site Session"
-                                  fill
-                                  className="object-cover object-right scale-125 blur-[2px] group-hover:blur-0 group-hover:scale-110 transition-all duration-700"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                                <div className="absolute bottom-4 left-4 right-4 p-4 rounded-2xl glass-image-overlay">
-                                  <span className="text-xs text-zinc-300 block">
-                                    On-Site Community Session
-                                  </span>
-                                  <h3 className="text-base font-semibold text-white">
-                                    {currentDay.title}
-                                  </h3>
-                                </div>
-                              </div>
-
-                              <div className="grid sm:grid-cols-2 gap-4">
-                                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
-                                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                                    <MapPin className="w-3.5 h-3.5 text-orange-500" /> Venue Location
-                                  </span>
-                                  <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                                    {currentDay.onsiteVenue ||
-                                      currentProgram.venueAddress ||
-                                      "The Sanctuary Wellness Studio, Senopati, Jakarta"}
-                                  </p>
-                                </div>
-
-                                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
-                                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                                    <Clock className="w-3.5 h-3.5 text-orange-500" /> Session Time
-                                  </span>
-                                  <p className="text-sm font-semibold text-zinc-900 dark:text-white">
-                                    {currentDay.onsiteSchedule || "08:30 – 10:00 WIB"}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {currentDay.meetupLink && (
-                                <div className="p-4 sm:p-5 rounded-2xl bg-orange-500/10 border border-orange-500/25 space-y-2.5">
-                                  <div className="flex items-center gap-2 text-xs font-semibold text-orange-600 dark:text-orange-400">
-                                    <Video className="w-4 h-4" />
-                                    <span>Live Stream Video Conference (Peserta Luar Kota)</span>
-                                  </div>
-                                  <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                                    Bagi peserta yang berdomisili di luar kota atau berhalangan hadir fisik ke studio, Anda dapat mengikuti sesi ini secara interaktif via streaming langsung:
-                                  </p>
-                                  <a
-                                    href={currentDay.meetupLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl chrome-button text-xs font-semibold shadow-sm"
-                                  >
-                                    <span>Gabung Live Streaming</span>
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* Daily Self-Assessment Note Card */}
-                          {currentDay.dailyAssessment && (
-                            <div className="glass-panel rounded-3xl p-5 sm:p-6 space-y-3">
-                              <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 block">
-                                Daily Self-Assessment
-                              </span>
-                              <p className="text-sm text-zinc-600 dark:text-zinc-300">
-                                {currentDay.dailyAssessment}
-                              </p>
-                              <textarea
-                                rows={2}
-                                disabled={currentDay.isPast2359}
-                                value={
-                                  dayAssessments[currentDay.id] !== undefined
-                                    ? dayAssessments[currentDay.id]
-                                    : currentDay.userProgress?.assessmentResponse || ""
-                                }
-                                onChange={(e) =>
-                                  setDayAssessments((prev) => ({
-                                    ...prev,
-                                    [currentDay.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder={
-                                  currentDay.isPast2359
-                                    ? "Catatan harian telah menjadi arsip baca-saja."
-                                    : "Enter your notes"
-                                }
-                                className={`w-full p-3.5 text-sm rounded-xl glass-input ${
-                                  currentDay.isPast2359 ? "opacity-60 cursor-not-allowed" : ""
-                                }`}
+                        {/* 2. FASE SIANG: MAIN CURRICULUM PROTOCOL (TRAINING / REST / CONNECTION) */}
+                        {currentDay.dayType === "TRAINING_DAY" ? (
+                          <div className="grid lg:grid-cols-12 gap-6 items-start">
+                            {/* Left (7 Columns): Video YouTube Premium Card & Workout Section */}
+                            <div className="lg:col-span-7 space-y-6">
+                              <VideoThumbnailLinkCard
+                                title={currentDay.title}
+                                videoUrl={currentDay.videoUrl}
+                                videoWatched={getVideoWatched(currentDay)}
+                                isPast2359={currentDay.isPast2359}
+                                onToggleWatched={handleToggleVideoWatched}
                               />
-                              <div className="flex items-center justify-between pt-1">
-                                {currentDay.isPast2359 ? (
-                                  <span className="text-[11px] text-zinc-500 dark:text-zinc-400 italic">
-                                    Catatan terkunci (batas cutoff 23:59 telah lewat)
+
+                              <WorkoutSection
+                                dayNumber={currentDay.dayNumber}
+                                availableOptions={currentDay.workoutOptions || []}
+                                selectedWorkout={dayWorkouts[currentDay.id] || currentDay.userProgress?.selectedWorkout}
+                                photoBeforeUrl={dayPhotosBefore[currentDay.id] || currentDay.userProgress?.photoBeforeUrl}
+                                photoAfterUrl={dayPhotosAfter[currentDay.id] || currentDay.userProgress?.photoAfterUrl}
+                                workoutNotes={dayWorkoutNotes[currentDay.id] !== undefined ? dayWorkoutNotes[currentDay.id] : currentDay.userProgress?.workoutNotes}
+                                checklist={currentDay.videoChecklist || []}
+                                completedChecklist={getCheckedItems(currentDay)}
+                                isPast2359={currentDay.isPast2359}
+                                onSelectWorkout={handleSelectWorkout}
+                                onUploadPhoto={handleUploadPhoto}
+                                onToggleChecklistItem={handleToggleChecklist}
+                                onSaveWorkoutNotes={handleSaveWorkoutNotes}
+                                onUpdateChecklistRep={handleUpdateChecklistRep}
+                              />
+                            </div>
+
+                            {/* Right (5 Columns): Meal Recommendation & Compliance */}
+                            <div className="lg:col-span-5 space-y-6">
+                              <MealSection
+                                mealRecommendation={currentDay.mealRecommendation}
+                                initialCompliance={dayMealCompliance[currentDay.id] || currentDay.userProgress?.mealCompliance || "FULL"}
+                                initialNotes={dayMealNotes[currentDay.id] !== undefined ? dayMealNotes[currentDay.id] : currentDay.userProgress?.mealNotes || ""}
+                                isPast2359={currentDay.isPast2359}
+                                onSaveMeal={handleSaveMeal}
+                              />
+                            </div>
+                          </div>
+                        ) : currentDay.dayType === "REST_DAY" ? (
+                          <div className="grid lg:grid-cols-12 gap-6 items-start">
+                            <div className="lg:col-span-7 space-y-6">
+                              <div className="glass-panel rounded-3xl p-7 sm:p-9 space-y-6 border border-zinc-200/70 dark:border-white/10 group">
+                                <div className="space-y-1">
+                                  <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                                    Phase 02 &bull; Parasympathetic Restoration
                                   </span>
-                                ) : (
-                                  <span className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                                    Simpan refleksi harian Anda sebelum 23:59 WIB
-                                  </span>
-                                )}
-                                {!currentDay.isPast2359 && (
-                                  <button
-                                    type="button"
-                                    onClick={handleSaveAssessment}
-                                    disabled={isSavingProgress}
-                                    className="px-4 py-2 rounded-xl chrome-button text-xs font-medium"
-                                  >
-                                    Save Note
-                                  </button>
-                                )}
+                                  <h3 className="text-xl sm:text-2xl font-light tracking-tight text-zinc-900 dark:text-white">
+                                    Rest &amp; Deep Recovery
+                                  </h3>
+                                </div>
+
+                                <div className="relative h-64 w-full rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-200/80 dark:border-white/10">
+                                  <Image
+                                    src="/image.jpg"
+                                    alt="Rest Day"
+                                    fill
+                                    className="object-cover scale-110 blur-[1px] group-hover:blur-0 group-hover:scale-105 transition-all duration-700"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+                                  <div className="absolute bottom-5 left-5 right-5 p-4 rounded-2xl glass-image-overlay backdrop-blur-xl border border-white/15">
+                                    <span className="text-micro uppercase tracking-[0.2em] text-zinc-300 block mb-0.5">
+                                      Circadian Regeneration
+                                    </span>
+                                    <h4 className="text-sm sm:text-base font-light text-white tracking-tight">
+                                      {currentDay.title}
+                                    </h4>
+                                  </div>
+                                </div>
+
+                                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 leading-relaxed font-light whitespace-pre-line">
+                                  {currentDay.restInstructions ||
+                                    "Take a gentle 25-minute sunlight walk, practice box breathing, and allow somatic tissues to fully decompress."}
+                                </p>
                               </div>
                             </div>
-                          )}
-                        </div>
 
-                        {/* Right Column (5 Columns): Checklist & Motion-Blur Meal Card */}
-                        <div className="lg:col-span-5 space-y-5">
-                          {/* Daily Checklist */}
-                          {currentDay.dayType === "TRAINING_DAY" &&
-                            currentDay.videoChecklist &&
-                            currentDay.videoChecklist.length > 0 && (
-                              <div className="glass-panel rounded-3xl p-5 sm:p-6 space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                                    <CheckSquare className="w-4 h-4" /> Step 2: Daily Checklist
+                            <div className="lg:col-span-5 space-y-6">
+                              <MealSection
+                                mealRecommendation={currentDay.mealRecommendation}
+                                initialCompliance={dayMealCompliance[currentDay.id] || currentDay.userProgress?.mealCompliance || "FULL"}
+                                initialNotes={dayMealNotes[currentDay.id] !== undefined ? dayMealNotes[currentDay.id] : currentDay.userProgress?.mealNotes || ""}
+                                isPast2359={currentDay.isPast2359}
+                                onSaveMeal={handleSaveMeal}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          /* CONNECTION_DAY / MEETUP_DAY */
+                          <div className="grid lg:grid-cols-12 gap-6 items-start">
+                            <div className="lg:col-span-7 space-y-6">
+                              <div className="glass-panel rounded-3xl p-7 sm:p-9 space-y-6 border border-zinc-200/70 dark:border-white/10 group">
+                                <div className="space-y-1">
+                                  <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                                    Phase 02 &bull; Connection Sanctuary
                                   </span>
-                                  <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                                    {getCheckedItems(currentDay).length} /{" "}
-                                    {currentDay.videoChecklist.length} Done
-                                  </span>
+                                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white font-geometric">
+                                    {currentDay.eventTitle || "Community & Facetime Circle"}
+                                  </h3>
+                                  <p className="text-xs text-zinc-500 dark:text-zinc-400 font-light font-mono">
+                                    In-person immersion, mentor alignment, and community synergy.
+                                  </p>
                                 </div>
-                                <div className="space-y-2.5">
-                                  {currentDay.videoChecklist.map((task, idx) => {
-                                    const checked = getCheckedItems(currentDay).includes(task);
-                                    return (
-                                      <button
-                                        key={idx}
-                                        type="button"
-                                        onClick={() => handleToggleChecklist(task)}
-                                        className={`w-full text-left p-3.5 rounded-2xl border text-sm transition flex items-center gap-3 ${
-                                          checked
-                                            ? "glass-panel-subtle border-zinc-300 dark:border-white/20 text-zinc-500 dark:text-zinc-400"
-                                            : "glass-panel-subtle border-zinc-200/80 dark:border-white/10 text-zinc-900 dark:text-zinc-100"
-                                        }`}
+
+                                <div className="relative h-60 w-full rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-200/80 dark:border-white/10">
+                                  <Image
+                                    src="/image.jpg"
+                                    alt="Connection Day"
+                                    fill
+                                    className="object-cover object-right scale-110 blur-[1px] group-hover:blur-0 group-hover:scale-105 transition-all duration-700"
+                                  />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                                  <div className="absolute bottom-5 left-5 right-5 p-4 rounded-2xl glass-image-overlay backdrop-blur-xl border border-white/15">
+                                    <span className="text-micro uppercase tracking-[0.2em] text-zinc-300 block mb-0.5">
+                                      Live Immersion
+                                    </span>
+                                    <h4 className="text-sm sm:text-base font-light text-white tracking-tight">
+                                      {currentDay.title}
+                                    </h4>
+                                  </div>
+                                </div>
+
+                                {/* Event Details 2-Column Grid */}
+                                <div className="grid sm:grid-cols-2 gap-4 font-mono">
+                                  {/* Schedule */}
+                                  <div className="p-4 sm:p-5 rounded-2xl glass-panel-subtle space-y-1 border border-zinc-200/60 dark:border-white/10">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 flex items-center gap-1.5 font-mono">
+                                      <Clock className="w-3.5 h-3.5 text-zinc-400" /> Session Schedule
+                                    </span>
+                                    <p className="text-xs sm:text-sm font-medium text-zinc-900 dark:text-white font-mono">
+                                      {currentDay.onsiteSchedule || "09:00 AM – 11:30 AM WIB"}
+                                    </p>
+                                  </div>
+
+                                  {/* Venue */}
+                                  <div className="p-4 sm:p-5 rounded-2xl glass-panel-subtle space-y-1 border border-zinc-200/60 dark:border-white/10">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 flex items-center gap-1.5 font-mono">
+                                      <MapPin className="w-3.5 h-3.5 text-zinc-400" /> Sanctuary Venue
+                                    </span>
+                                    <p className="text-xs sm:text-sm font-medium text-zinc-900 dark:text-white font-mono">
+                                      {currentDay.onsiteVenue ||
+                                        currentProgram.venueAddress ||
+                                        "The BMS Sanctuary, Senopati, Jakarta"}
+                                    </p>
+                                  </div>
+
+                                  {/* Host / Who You Will Meet */}
+                                  <div className="p-4 sm:p-5 rounded-2xl glass-panel-subtle space-y-1 border border-zinc-200/60 dark:border-white/10">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 flex items-center gap-1.5 font-mono">
+                                      <Users className="w-3.5 h-3.5 text-zinc-400" /> Who You Will Meet
+                                    </span>
+                                    <p className="text-xs sm:text-sm font-medium text-zinc-900 dark:text-white font-mono">
+                                      {currentDay.eventHost || currentDay.coachName || currentProgram.coachName || "Coach & Community Leads"}
+                                    </p>
+                                  </div>
+
+                                  {/* Google Maps Link */}
+                                  <div className="p-4 sm:p-5 rounded-2xl glass-panel-subtle space-y-2 border border-zinc-200/60 dark:border-white/10 flex flex-col justify-between">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 flex items-center gap-1.5 font-mono">
+                                      <Compass className="w-3.5 h-3.5 text-zinc-400" /> Venue Navigation
+                                    </span>
+                                    {currentDay.mapLink ? (
+                                      <a
+                                        href={currentDay.mapLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-semibold hover:opacity-90 transition w-fit"
                                       >
-                                        {checked ? (
-                                          <CheckSquare className="w-4 h-4 text-zinc-900 dark:text-white shrink-0" />
+                                        <span>Open Google Maps</span>
+                                        <ExternalLink className="w-3 h-3" />
+                                      </a>
+                                    ) : (
+                                      <span className="text-xs text-zinc-400 font-light">
+                                        Location details confirmed via member chat
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Event Rundown / Details */}
+                                {currentDay.eventDetails && (
+                                  <div className="p-5 rounded-2xl glass-panel-subtle border border-zinc-200/70 dark:border-white/10 space-y-2 font-mono">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 block font-mono">
+                                      Event Details &amp; Agenda Rundown
+                                    </span>
+                                    <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-light whitespace-pre-line font-mono">
+                                      {currentDay.eventDetails}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Virtual Stream Link for Remote Members */}
+                                {currentDay.meetupLink && (
+                                  <div className="p-5 rounded-2xl glass-panel-subtle border border-zinc-200/70 dark:border-white/10 space-y-3 font-mono">
+                                    <div className="flex items-center gap-2 text-micro uppercase tracking-[0.2em] font-semibold text-zinc-500 dark:text-zinc-400 font-mono">
+                                      <Video className="w-3.5 h-3.5 text-zinc-400" />
+                                      <span>Virtual Broadcast &bull; Remote Access</span>
+                                    </div>
+                                    <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed font-light font-mono">
+                                      For remote members unable to attend the studio physically, access the live high-definition broadcast:
+                                    </p>
+                                    <a
+                                      href={currentDay.meetupLink}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide shadow-sm font-mono"
+                                    >
+                                      <span>Join Live Stream</span>
+                                      <ExternalLink className="w-3.5 h-3.5" />
+                                    </a>
+                                  </div>
+                                )}
+
+                                {/* Member Event Feedback Note Input */}
+                                <div className="p-6 rounded-2xl glass-panel-subtle border border-zinc-200/70 dark:border-white/10 space-y-3 font-mono">
+                                  <div className="space-y-1">
+                                    <span className="text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 block font-mono">
+                                      Member Event Feedback Note
+                                    </span>
+                                    <h4 className="text-sm font-semibold text-zinc-900 dark:text-white">
+                                      How was your Connect Day experience?
+                                    </h4>
+                                    <p className="text-xs text-zinc-500 font-light">
+                                      Share key takeaways, circle highlights, or reflections from today&apos;s session.
+                                    </p>
+                                  </div>
+
+                                  <textarea
+                                    rows={3}
+                                    disabled={currentDay.isPast2359}
+                                    value={
+                                      dayEventFeedback[currentDay.id] !== undefined
+                                        ? dayEventFeedback[currentDay.id]
+                                        : currentDay.userProgress?.eventFeedback || ""
+                                    }
+                                    onChange={(e) => {
+                                      const text = e.target.value;
+                                      setDayEventFeedback((p) => ({ ...p, [currentDay.id]: text }));
+                                    }}
+                                    placeholder="e.g. Loved connecting with the coach and community in person! The alignment cues were transformative..."
+                                    className="w-full p-4 rounded-xl glass-input text-xs sm:text-sm font-light text-zinc-900 dark:text-white leading-relaxed resize-none transition focus:ring-1 focus:ring-white/40 font-mono"
+                                  />
+
+                                  {!currentDay.isPast2359 && (
+                                    <div className="flex justify-end pt-1">
+                                      <button
+                                        type="button"
+                                        disabled={isSavingFeedback}
+                                        onClick={() => {
+                                          const val =
+                                            dayEventFeedback[currentDay.id] !== undefined
+                                              ? dayEventFeedback[currentDay.id]
+                                              : currentDay.userProgress?.eventFeedback || "";
+                                          handleSaveEventFeedback(val);
+                                        }}
+                                        className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center gap-2 transition duration-200 shadow-md font-mono"
+                                      >
+                                        {isSavingFeedback ? (
+                                          <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Saving...</span>
+                                          </>
+                                        ) : feedbackSaved ? (
+                                          <>
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-zinc-900 dark:text-zinc-950" />
+                                            <span>Saved</span>
+                                          </>
                                         ) : (
-                                          <Square className="w-4 h-4 text-zinc-400 shrink-0" />
+                                          <span>Save Event Feedback</span>
                                         )}
-                                        <span className={checked ? "line-through" : ""}>
-                                          {task}
-                                        </span>
                                       </button>
-                                    );
-                                  })}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            )}
-
-                          {/* Meal Recommendation Bento Card with Motion-Blur Image Header */}
-                          {currentDay.mealRecommendation && (
-                            <div className="glass-panel rounded-3xl p-4 sm:p-5 space-y-4 group">
-                              <div className="relative h-36 w-full rounded-2xl overflow-hidden bg-zinc-900">
-                                <Image
-                                  src="/image.jpg"
-                                  alt="Meal Guide"
-                                  fill
-                                  className="object-cover object-bottom scale-125 blur-[2px] group-hover:blur-0 group-hover:scale-110 transition-all duration-700"
-                                />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                                <div className="absolute bottom-3 left-3 right-3 p-3 rounded-xl glass-image-overlay flex items-center gap-2 text-white">
-                                  <Utensils className="w-4 h-4 shrink-0" />
-                                  <span className="text-xs font-semibold">
-                                    Daily Meal Recommendation
-                                  </span>
-                                </div>
-                              </div>
-
-                              <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-line px-1">
-                                {currentDay.mealRecommendation}
-                              </p>
                             </div>
-                          )}
 
-                          {/* Daily Reminder Card */}
-                          {(currentDay.userProgress?.isCompleted
-                            ? currentDay.completedReminder
-                            : currentDay.pendingReminder) && (
-                            <div className="glass-panel rounded-3xl p-5 space-y-2">
-                              <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-1.5">
-                                <Bell className="w-4 h-4 text-zinc-500" /> Daily Note
-                              </span>
-                              <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-                                {currentDay.userProgress?.isCompleted
-                                  ? currentDay.completedReminder
-                                  : currentDay.pendingReminder}
-                              </p>
+                            <div className="lg:col-span-5 space-y-6">
+                              <MealSection
+                                mealRecommendation={currentDay.mealRecommendation}
+                                initialCompliance={dayMealCompliance[currentDay.id] || currentDay.userProgress?.mealCompliance || "FULL"}
+                                initialNotes={dayMealNotes[currentDay.id] !== undefined ? dayMealNotes[currentDay.id] : currentDay.userProgress?.mealNotes || ""}
+                                isPast2359={currentDay.isPast2359}
+                                onSaveMeal={handleSaveMeal}
+                              />
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        )}
+
+                        {/* 3. FASE MALAM: DEAR DIARY REFLECTION & HAPPINESS RATE */}
+                        <DailyReflectionCard
+                          dayNumber={currentDay.dayNumber}
+                          initialReflection={dayReflections[currentDay.id] !== undefined ? dayReflections[currentDay.id] : currentDay.userProgress?.dailyReflection || ""}
+                          initialHappinessRate={dayHappiness[currentDay.id] || currentDay.userProgress?.happinessRate || 5}
+                          isPast2359={currentDay.isPast2359}
+                          onSaveReflection={handleSaveReflection}
+                        />
                       </div>
                     )}
                   </div>
@@ -1518,20 +1799,23 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
         {/* TAB 2: ALL PLANS (IMAGE AS FULL BACKGROUND WIDGET)                   */}
         {/* ===================================================================== */}
         {activeTab === "all_plan" && (
-          <div className="space-y-6">
-            <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-                Curated Cohorts
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                All Plans
+          <div className="space-y-8 sm:space-y-10">
+            <div className="glass-panel rounded-3xl p-8 sm:p-12 border border-zinc-200/70 dark:border-white/10 space-y-3">
+              <div className="flex items-center gap-2 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+                <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 font-mono">
+                  Curated Cohorts
+                </span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-extralight tracking-tight text-zinc-900 dark:text-white font-geometric">
+                Longevity &amp; Movement <span className="font-geometric italic text-zinc-500 dark:text-zinc-400 font-light">Protocols</span>
               </h1>
-              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 max-w-xl">
+              <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-xl font-light leading-relaxed">
                 Choose your structured longevity and movement protocol. Strictly capped at 35 members per cohort to preserve intimate coach attention.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 gap-6 sm:gap-8">
               {allPrograms.map((prog, idx) => {
                 const enrolled = myPrograms.find((e) => e.programId === prog.id);
                 const isActive = enrolled?.status === "ACTIVE";
@@ -1540,7 +1824,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 return (
                   <div
                     key={prog.id}
-                    className="relative rounded-3xl overflow-hidden glass-panel border border-white/60 dark:border-white/10 min-h-[420px] p-6 sm:p-7 flex flex-col justify-between group shadow-xl"
+                    className="relative rounded-3xl overflow-hidden glass-panel border border-zinc-200/70 dark:border-white/10 min-h-[460px] p-7 sm:p-8 flex flex-col justify-between group shadow-xl"
                   >
                     {/* Full Background Image */}
                     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -1552,44 +1836,49 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       />
                     </div>
                     {/* Luminous light scrim */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/20 pointer-events-none" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/20 pointer-events-none" />
 
                     {/* Top Badges */}
-                    <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="px-3 py-1 rounded-full glass-image-overlay text-[10px] font-semibold uppercase tracking-wider text-white">
+                    <div className="relative z-10 flex flex-wrap items-center justify-between gap-2.5 font-mono">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-3 py-1 rounded-full glass-image-overlay text-micro uppercase tracking-[0.2em] font-semibold text-white">
                           {prog.dayCount} Days
                         </span>
 
                         {prog.locationType === "ONSITE" && (
-                          <span className="px-2.5 py-1 rounded-full bg-amber-500/25 border border-amber-400/40 text-[10px] font-semibold text-amber-200 backdrop-blur-md flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-amber-300" />
-                            <span>On-Site • {prog.city || "Studio"}</span>
+                          <span className="px-3 py-1 rounded-full glass-image-overlay border border-white/20 text-micro uppercase tracking-wider font-semibold text-zinc-200 backdrop-blur-md flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3 text-zinc-300" />
+                            <span>On-Site &bull; {prog.city || "Studio"}</span>
                           </span>
                         )}
 
                         {prog.locationType === "HYBRID" && (
-                          <span className="px-2.5 py-1 rounded-full bg-purple-500/25 border border-purple-400/40 text-[10px] font-semibold text-purple-200 backdrop-blur-md flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-purple-300" />
-                            <span>Hybrid • {prog.city || "Studio"}</span>
+                          <span className="px-3 py-1 rounded-full glass-image-overlay border border-white/20 text-micro uppercase tracking-wider font-semibold text-zinc-200 backdrop-blur-md flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3 text-zinc-300" />
+                            <span>Hybrid &bull; {prog.city || "Studio"}</span>
                           </span>
                         )}
 
                         {(!prog.locationType || prog.locationType === "ONLINE") && (
-                          <span className="px-2.5 py-1 rounded-full bg-blue-500/25 border border-blue-400/40 text-[10px] font-semibold text-blue-200 backdrop-blur-md">
-                            🌐 100% Online
+                          <span className="px-3 py-1 rounded-full glass-image-overlay border border-white/20 text-micro uppercase tracking-wider font-semibold text-zinc-200 backdrop-blur-md">
+                            Online Protocol
                           </span>
                         )}
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {isActive ? (
-                          <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-semibold uppercase tracking-wider backdrop-blur-md">
+                        {prog.status === "COMING_SOON" ? (
+                          <span className="px-3 py-1 rounded-full bg-white/15 border border-white/20 text-micro uppercase tracking-[0.2em] font-semibold text-zinc-200 backdrop-blur-md flex items-center gap-1.5 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-pulse" />
+                            <span>Coming Soon</span>
+                          </span>
+                        ) : isActive ? (
+                          <span className="px-3 py-1 rounded-full chrome-badge text-white text-micro uppercase tracking-[0.2em] font-semibold">
                             Active Plan
                           </span>
                         ) : (
-                          <span className="px-3 py-1 rounded-full glass-image-overlay text-[11px] font-medium text-white flex items-center gap-1.5">
-                            <Users className="w-3 h-3 text-orange-400" />
+                          <span className="px-3 py-1 rounded-full glass-image-overlay text-micro uppercase tracking-wider font-medium text-white flex items-center gap-1.5">
+                            <Users className="w-3 h-3 text-zinc-300" />
                             <span>{remainingSlots} spots left</span>
                           </span>
                         )}
@@ -1597,55 +1886,69 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     </div>
 
                     {/* Bottom Floating Glassmorphic Content Card */}
-                    <div className="relative z-10 glass-image-overlay rounded-2xl p-5 space-y-3.5 text-white border border-white/20 backdrop-blur-xl">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2 text-[11px] text-zinc-300">
-                          <span className="flex items-center gap-1">
-                            <User className="w-3 h-3 text-orange-400" /> {prog.coachName}
-                          </span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-orange-400" /> Starts {formatShortDate(prog.startDate)}
-                          </span>
+                    <div className="relative z-10 glass-image-overlay rounded-2xl p-6 space-y-4 text-white border border-white/15 backdrop-blur-xl">
+                      <div className="space-y-1.5 font-mono">
+                        <div className="flex items-center gap-2 text-micro uppercase tracking-[0.18em] text-zinc-300 font-medium">
+                          <span>{prog.coachName}</span>
+                          <span>&bull;</span>
+                          <span>Starts {formatShortDate(prog.startDate)}</span>
                         </div>
 
-                        <h3 className="text-lg font-bold tracking-tight text-white">
+                        <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white font-geometric">
                           {prog.title}
                         </h3>
 
-                        <p className="text-xs text-zinc-200/90 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-zinc-200/90 line-clamp-2 leading-relaxed font-light font-mono">
                           {prog.description}
                         </p>
 
                         {prog.locationType !== "ONLINE" && prog.virtualFallbackAvailable && (
-                          <div className="pt-1 flex items-center gap-1.5 text-[11px] text-orange-200/90">
-                            <Video className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                            <span>Peserta luar kota: Live streaming Zoom tersedia</span>
+                          <div className="pt-1 flex items-center gap-1.5 text-micro uppercase tracking-wider text-zinc-300 font-medium font-mono">
+                            <Video className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
+                            <span>Live streaming broadcast included</span>
                           </div>
                         )}
                       </div>
 
-                      <div className="pt-2 border-t border-white/15 flex items-center justify-between gap-3">
+                      <div className="pt-3 border-t border-white/15 flex items-center justify-between gap-3 font-mono">
                         <div>
-                          <span className="text-[10px] uppercase tracking-wider text-zinc-400 block">
-                            Tuition
+                          <span className="text-micro uppercase tracking-[0.2em] text-zinc-400 block mb-0.5">
+                            {prog.status === "COMING_SOON" ? "Registration" : "Tuition"}
                           </span>
-                          <span className="text-base font-bold text-white">
-                            Rp {prog.price.toLocaleString("id-ID")}
-                          </span>
+                          {prog.status === "COMING_SOON" ? (
+                            <span className="text-xs font-medium text-zinc-300">
+                              {prog.registrationOpenDate
+                                ? `Opens ${formatShortDate(prog.registrationOpenDate)}`
+                                : "Announced Soon (TBA)"}
+                            </span>
+                          ) : (
+                            <span className="text-base font-bold text-white tracking-tight">
+                              Rp {prog.price.toLocaleString("id-ID")}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setDetailedProgram(prog)}
-                            className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-medium transition"
+                            className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white transition"
                             title="View Overview"
                           >
                             <Info className="w-4 h-4" />
                           </button>
 
-                          {isActive ? (
+                          {prog.status === "COMING_SOON" ? (
+                            <a
+                              href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk cohort: ${prog.title}`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-5 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-1.5 transition shadow"
+                            >
+                              <Sparkles className="w-3.5 h-3.5 text-zinc-400" />
+                              <span>Waitlist</span>
+                            </a>
+                          ) : isActive ? (
                             <button
                               type="button"
                               onClick={() => {
@@ -1653,9 +1956,9 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                                 setActiveDayIndex(0);
                                 setActiveTab("my_plan");
                               }}
-                              className="px-4 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold inline-flex items-center gap-1.5 transition shadow"
+                              className="px-5 py-2.5 rounded-full bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold tracking-wide inline-flex items-center gap-1.5 transition shadow"
                             >
-                              <span>Open My Plan</span>
+                              <span>Open Plan</span>
                               <ArrowRight className="w-3.5 h-3.5" />
                             </button>
                           ) : (
@@ -1663,7 +1966,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                               type="button"
                               onClick={() => handleOpenQrisCheckout(prog.id)}
                               disabled={enrollingId === prog.id}
-                              className="px-4 py-2 rounded-xl chrome-button text-xs font-semibold inline-flex items-center gap-1.5 transition shadow"
+                              className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-1.5 transition shadow"
                             >
                               {enrollingId === prog.id ? (
                                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1694,15 +1997,18 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
         {/* TAB 3: SETTING (PROFILE, REMINDERS, SECURITY, PREFERENCES)             */}
         {/* ===================================================================== */}
         {activeTab === "setting" && (
-          <div className="max-w-3xl mx-auto space-y-6">
-            <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-1">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-                Preferences & Credentials
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                Settings
+          <div className="max-w-3xl mx-auto space-y-8 sm:space-y-10">
+            <div className="glass-panel rounded-3xl p-8 sm:p-12 border border-zinc-200/70 dark:border-white/10 space-y-3">
+              <div className="flex items-center gap-2 font-mono">
+                <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+                <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 font-mono">
+                  Preferences &amp; Credentials
+                </span>
+              </div>
+              <h1 className="text-3xl sm:text-4xl font-extralight tracking-tight text-zinc-900 dark:text-white font-geometric">
+                Account <span className="font-geometric italic text-zinc-500 dark:text-zinc-400 font-light">Settings</span>
               </h1>
-              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400">
+              <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-light leading-relaxed">
                 Manage your personal profile, notification schedule, credentials, and app preferences.
               </p>
             </div>
@@ -1710,22 +2016,25 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             {/* 1. Profile Information */}
             <form
               onSubmit={handleUpdateProfile}
-              className="glass-panel rounded-3xl p-6 sm:p-8 space-y-4 shadow-sm"
+              className="glass-panel rounded-3xl p-7 sm:p-9 space-y-6 border border-zinc-200/70 dark:border-white/10 shadow-sm"
             >
-              <div className="space-y-0.5">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              <div className="space-y-1">
+                <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                  Identity Details
+                </span>
+                <h3 className="text-lg font-light tracking-tight text-zinc-900 dark:text-white font-geometric">
                   Profile Information
                 </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Update your contact details and display name.
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-light">
+                  Update your contact details and display name within BMS.
                 </p>
               </div>
 
               {profileMsg && (
                 <div
-                  className={`p-3.5 rounded-xl text-xs ${
+                  className={`p-4 rounded-2xl text-xs font-medium font-mono ${
                     profileMsg.type === "success"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                      ? "bg-white/10 border border-white/20 text-zinc-900 dark:text-white"
                       : "bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300"
                   }`}
                 >
@@ -1733,9 +2042,9 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 </div>
               )}
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Full Name
                   </label>
                   <input
@@ -1746,24 +2055,24 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     onChange={(e) =>
                       setProfileForm((p) => ({ ...p, fullName: e.target.value }))
                     }
-                    className="w-full px-4 py-2.5 rounded-xl glass-input text-sm"
+                    className="w-full px-4 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Email Address
                   </label>
                   <input
                     type="email"
                     disabled
                     value={user.email}
-                    className="w-full px-4 py-2.5 rounded-xl glass-panel-subtle text-sm text-zinc-500 dark:text-zinc-400 cursor-not-allowed"
+                    className="w-full px-4 py-3 rounded-2xl glass-panel-subtle text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 cursor-not-allowed border border-zinc-200/50 dark:border-white/5"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     WhatsApp / Phone Number
                   </label>
                   <input
@@ -1773,7 +2082,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     onChange={(e) =>
                       setProfileForm((p) => ({ ...p, phone: e.target.value }))
                     }
-                    className="w-full px-4 py-2.5 rounded-xl glass-input text-sm"
+                    className="w-full px-4 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                   />
                 </div>
               </div>
@@ -1782,7 +2091,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 <button
                   type="submit"
                   disabled={isUpdatingProfile}
-                  className="px-5 py-2.5 rounded-xl chrome-button text-xs font-semibold"
+                  className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide shadow-sm"
                 >
                   {isUpdatingProfile ? "Saving..." : "Save Changes"}
                 </button>
@@ -1790,43 +2099,46 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             </form>
 
             {/* 2. Daily Reminders & Alerts */}
-            <div className="glass-panel rounded-3xl p-6 sm:p-8 space-y-5 shadow-sm">
+            <div className="glass-panel rounded-3xl p-7 sm:p-9 space-y-6 border border-zinc-200/70 dark:border-white/10 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
-                  <h3 className="text-base font-bold text-zinc-900 dark:text-white flex items-center gap-2">
-                    <Bell className="w-4 h-4 text-orange-500" />
+                  <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                    Circadian Push Notifications
+                  </span>
+                  <h3 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2 font-geometric">
+                    <Bell className="w-4 h-4 text-zinc-400" />
                     <span>Daily Reminder Schedule</span>
                   </h3>
-                  <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                    Set notifications for your morning session and evening 23:59 checklist cutoff.
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-light">
+                    Synchronize reminders for your morning practice and evening 23:59 checklist cutoff.
                   </p>
                 </div>
-                <span className="text-xs font-medium px-3 py-1 rounded-full glass-panel-subtle shrink-0 text-zinc-800 dark:text-zinc-200">
-                  {notifPermission === "granted" ? "Enabled" : "Not Enabled"}
+                <span className="text-micro uppercase tracking-[0.18em] font-semibold px-3 py-1 rounded-full glass-panel-subtle shrink-0 text-zinc-700 dark:text-zinc-300">
+                  {notifPermission === "granted" ? "Active" : "Disabled"}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Morning Routine
                   </label>
                   <input
                     type="time"
                     value={morningTime}
                     onChange={(e) => setMorningTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm"
+                    className="w-full px-4 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Evening Cutoff (23:59)
                   </label>
                   <input
                     type="time"
                     value={eveningTime}
                     onChange={(e) => setEveningTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl glass-input text-sm"
+                    className="w-full px-4 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                   />
                 </div>
               </div>
@@ -1835,7 +2147,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 <button
                   type="button"
                   onClick={handleEnableNotifications}
-                  className="px-5 py-2.5 rounded-xl chrome-button text-xs font-semibold"
+                  className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide shadow-sm"
                 >
                   {notifPermission === "granted"
                     ? "Save Schedule"
@@ -1844,29 +2156,29 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 <button
                   type="button"
                   onClick={() => handleTestReminder("morning")}
-                  className="px-4 py-2.5 rounded-xl glass-panel-subtle text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                  className="px-5 py-2.5 rounded-full glass-panel-subtle text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 transition"
                 >
                   Test Morning Alert
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTestReminder("evening")}
-                  className="px-4 py-2.5 rounded-xl glass-panel-subtle text-xs font-medium text-zinc-900 dark:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5 transition"
+                  className="px-5 py-2.5 rounded-full glass-panel-subtle text-xs font-medium text-zinc-800 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 transition"
                 >
                   Test Evening Alert
                 </button>
               </div>
 
               {/* PWA Home Screen Guide */}
-              <div className="pt-4 border-t border-zinc-900/[0.06] dark:border-white/10 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 dark:text-white">
-                  <Smartphone className="w-4 h-4 text-orange-500" />
-                  <span>Install on Home Screen (PWA)</span>
+              <div className="pt-5 border-t border-zinc-200/60 dark:border-white/10 space-y-2">
+                <div className="flex items-center gap-2 text-micro uppercase tracking-[0.2em] font-semibold text-zinc-900 dark:text-white font-mono">
+                  <Smartphone className="w-3.5 h-3.5 text-zinc-400" />
+                  <span>Install on Home Screen (PWA Sanctuary)</span>
                 </div>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  For the best experience, add this app to your mobile home screen via browser menu:
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-light">
+                  For native ambient immersion and reliable push alerts, install BMS onto your device home screen:
                 </p>
-                <ol className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400 list-decimal list-inside">
+                <ol className="space-y-1.5 text-xs text-zinc-600 dark:text-zinc-400 list-decimal list-inside font-light">
                   <li>In <strong>Safari (iOS)</strong>, tap Share &rarr; &ldquo;Add to Home Screen&rdquo;.</li>
                   <li>In <strong>Chrome (Android)</strong>, tap Menu (3 dots) &rarr; &ldquo;Install app&rdquo;.</li>
                 </ol>
@@ -1876,22 +2188,25 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             {/* 3. Security & Password */}
             <form
               onSubmit={handleChangePassword}
-              className="glass-panel rounded-3xl p-6 sm:p-8 space-y-4 shadow-sm"
+              className="glass-panel rounded-3xl p-7 sm:p-9 space-y-6 border border-zinc-200/70 dark:border-white/10 shadow-sm"
             >
-              <div className="space-y-0.5">
-                <h3 className="text-base font-bold text-zinc-900 dark:text-white">
+              <div className="space-y-1">
+                <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                  Access Security
+                </span>
+                <h3 className="text-lg font-light tracking-tight text-zinc-900 dark:text-white">
                   Change Password
                 </h3>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Ensure your account is using a strong password.
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-light">
+                  Ensure your account is protected with a resilient credentials passphrase.
                 </p>
               </div>
 
               {passwordMsg && (
                 <div
-                  className={`p-3.5 rounded-xl text-xs ${
+                  className={`p-4 rounded-2xl text-xs font-medium font-mono ${
                     passwordMsg.type === "success"
-                      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300"
+                      ? "bg-white/10 border border-white/20 text-zinc-900 dark:text-white"
                       : "bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-300"
                   }`}
                 >
@@ -1899,9 +2214,9 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 </div>
               )}
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Current Password
                   </label>
                   <div className="relative">
@@ -1913,12 +2228,12 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       onChange={(e) =>
                         setPasswordForm((p) => ({ ...p, currentPassword: e.target.value }))
                       }
-                      className="w-full pl-4 pr-10 py-2.5 rounded-xl glass-input text-sm"
+                      className="w-full pl-4 pr-12 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => setPeekCurrentPass(!peekCurrentPass)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                     >
                       {peekCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1926,7 +2241,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     New Password
                   </label>
                   <div className="relative">
@@ -1939,12 +2254,12 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       onChange={(e) =>
                         setPasswordForm((p) => ({ ...p, newPassword: e.target.value }))
                       }
-                      className="w-full pl-4 pr-10 py-2.5 rounded-xl glass-input text-sm"
+                      className="w-full pl-4 pr-12 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => setPeekNewPass(!peekNewPass)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                     >
                       {peekNewPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1952,7 +2267,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 mb-1.5">
+                  <label className="block text-micro uppercase tracking-[0.2em] font-semibold text-zinc-400 dark:text-zinc-500 mb-2">
                     Confirm New Password
                   </label>
                   <div className="relative">
@@ -1965,12 +2280,12 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       onChange={(e) =>
                         setPasswordForm((p) => ({ ...p, confirmPassword: e.target.value }))
                       }
-                      className="w-full pl-4 pr-10 py-2.5 rounded-xl glass-input text-sm"
+                      className="w-full pl-4 pr-12 py-3 rounded-2xl glass-input text-xs sm:text-sm"
                     />
                     <button
                       type="button"
                       onClick={() => setPeekConfirmPass(!peekConfirmPass)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
                     >
                       {peekConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1982,7 +2297,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 <button
                   type="submit"
                   disabled={isChangingPass}
-                  className="px-5 py-2.5 rounded-xl chrome-button text-xs font-semibold"
+                  className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide shadow-sm"
                 >
                   {isChangingPass ? "Updating..." : "Update Password"}
                 </button>
@@ -1990,18 +2305,21 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             </form>
 
             {/* 4. Danger Zone */}
-            <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-red-500/20 space-y-3 shadow-sm">
-              <h3 className="text-base font-bold text-red-600 dark:text-red-400">
+            <div className="glass-panel rounded-3xl p-7 sm:p-9 border border-red-500/20 space-y-4 shadow-sm">
+              <span className="text-micro uppercase tracking-[0.22em] font-semibold text-red-500 block">
+                Irreversible Action
+              </span>
+              <h3 className="text-lg font-light tracking-tight text-red-600 dark:text-red-400">
                 Delete Account
               </h3>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                Permanently delete your account, curriculum progress, and active cohort enrollments. This action cannot be undone.
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-light">
+                Permanently purge your BMS account, personal logs, streak histories, and active cohort enrollments. This cannot be reversed.
               </p>
-              <div className="pt-1">
+              <div className="pt-2">
                 <button
                   type="button"
                   onClick={() => setDeleteModalOpen(true)}
-                  className="px-4 py-2 rounded-xl glass-panel-subtle text-red-600 dark:text-red-400 hover:border-red-500/40 text-xs font-semibold transition"
+                  className="px-5 py-2.5 rounded-full border border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 text-xs font-medium tracking-wide transition"
                 >
                   Delete Account
                 </button>
@@ -2123,20 +2441,20 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6">
               <div className="space-y-2">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400 block">
-                  About This Cohort
+                <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                  Curriculum Overview
                 </span>
-                <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                <p className="text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed font-light">
                   {detailedProgram.description}
                 </p>
                 {detailedProgram.recommendedFor && (
-                  <div className="p-3 rounded-2xl glass-panel-subtle text-xs">
-                    <span className="font-semibold text-zinc-900 dark:text-white block mb-0.5">
+                  <div className="p-4 rounded-2xl glass-panel-subtle text-xs">
+                    <span className="text-micro uppercase tracking-wider font-semibold text-zinc-900 dark:text-white block mb-1">
                       Recommended For:
                     </span>
-                    <span className="text-zinc-600 dark:text-zinc-300">
+                    <span className="text-zinc-600 dark:text-zinc-300 font-light">
                       {detailedProgram.recommendedFor}
                     </span>
                   </div>
@@ -2145,29 +2463,29 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
               {/* Program Schedule Details */}
               <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3.5 rounded-2xl glass-panel-subtle space-y-0.5">
-                  <span className="text-zinc-500 dark:text-zinc-400 block text-[11px]">
+                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
+                  <span className="text-micro uppercase tracking-wider text-zinc-400 block">
                     Lead Coach
                   </span>
-                  <strong className="font-semibold text-zinc-900 dark:text-white">
+                  <strong className="font-medium text-zinc-900 dark:text-white">
                     {detailedProgram.coachName}
                   </strong>
                 </div>
 
-                <div className="p-3.5 rounded-2xl glass-panel-subtle space-y-0.5">
-                  <span className="text-zinc-500 dark:text-zinc-400 block text-[11px]">
+                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
+                  <span className="text-micro uppercase tracking-wider text-zinc-400 block">
                     Tuition Fee
                   </span>
-                  <strong className="font-semibold text-zinc-900 dark:text-white">
+                  <strong className="font-light text-zinc-900 dark:text-white">
                     Rp {detailedProgram.price.toLocaleString("id-ID")}
                   </strong>
                 </div>
 
-                <div className="p-3.5 rounded-2xl glass-panel-subtle space-y-0.5">
-                  <span className="text-zinc-500 dark:text-zinc-400 block text-[11px]">
+                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
+                  <span className="text-micro uppercase tracking-wider text-zinc-400 block">
                     Start Date
                   </span>
-                  <strong className="font-semibold text-zinc-900 dark:text-white">
+                  <strong className="font-medium text-zinc-900 dark:text-white">
                     {new Date(detailedProgram.startDate).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
@@ -2175,41 +2493,41 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                   </strong>
                 </div>
 
-                <div className="p-3.5 rounded-2xl glass-panel-subtle space-y-0.5">
-                  <span className="text-zinc-500 dark:text-zinc-400 block text-[11px]">
+                <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
+                  <span className="text-micro uppercase tracking-wider text-zinc-400 block">
                     Seats Availability
                   </span>
-                  <strong className="font-semibold text-zinc-900 dark:text-white">
+                  <strong className="font-medium text-zinc-900 dark:text-white">
                     {Math.max(0, detailedProgram.maxQuota - detailedProgram.enrolledCount)} of {detailedProgram.maxQuota} Spots Open
                   </strong>
                 </div>
               </div>
 
               {/* What Happens Daily */}
-              <div className="space-y-2.5">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400 block">
-                  How The Daily Curriculum Works
+              <div className="space-y-3">
+                <span className="text-micro uppercase tracking-[0.22em] font-semibold text-zinc-400 dark:text-zinc-500 block">
+                  Daily Protocol Cadence
                 </span>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl glass-panel-subtle text-xs">
-                    <Clock className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                <div className="space-y-2.5 font-mono">
+                  <div className="flex items-start gap-3 p-3.5 rounded-2xl glass-panel-subtle text-xs">
+                    <Clock className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="font-semibold text-zinc-900 dark:text-white block">
+                      <strong className="font-semibold text-zinc-900 dark:text-white block font-mono">
                         00:00 Morning Session Unlock
                       </strong>
-                      <span className="text-zinc-600 dark:text-zinc-400 text-[11px]">
+                      <span className="text-zinc-500 dark:text-zinc-400 text-xs font-light font-mono">
                         New workout video & anti-inflammatory meal guide ready each day.
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-2.5 p-3 rounded-2xl glass-panel-subtle text-xs">
-                    <CheckCircle className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
+                  <div className="flex items-start gap-3 p-3.5 rounded-2xl glass-panel-subtle text-xs">
+                    <CheckCircle className="w-4 h-4 text-zinc-300 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="font-semibold text-zinc-900 dark:text-white block">
+                      <strong className="font-semibold text-zinc-900 dark:text-white block font-mono">
                         23:59 Daily Streak Cutoff
                       </strong>
-                      <span className="text-zinc-600 dark:text-zinc-400 text-[11px]">
+                      <span className="text-zinc-500 dark:text-zinc-400 text-xs font-light font-mono">
                         Mark your video watched and checklist complete before midnight.
                       </span>
                     </div>
@@ -2219,11 +2537,11 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             </div>
 
             {/* Modal Footer Actions */}
-            <div className="p-5 border-t border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between gap-3 bg-white/40 dark:bg-white/[0.02]">
+            <div className="p-5 border-t border-zinc-200/60 dark:border-white/10 flex items-center justify-between gap-3 bg-white/40 dark:bg-white/[0.02] font-mono">
               <button
                 type="button"
                 onClick={() => setDetailedProgram(null)}
-                className="px-4 py-2.5 rounded-xl glass-panel-subtle text-xs font-medium text-zinc-700 dark:text-zinc-300"
+                className="px-5 py-2.5 rounded-full glass-panel-subtle text-xs font-medium text-zinc-700 dark:text-zinc-300 font-mono"
               >
                 Close
               </button>
@@ -2231,6 +2549,19 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
               {(() => {
                 const enrolled = myPrograms.find((e) => e.programId === detailedProgram.id);
                 const isActive = enrolled?.status === "ACTIVE";
+
+                if (detailedProgram.status === "COMING_SOON") {
+                  return (
+                    <a
+                      href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk cohort: ${detailedProgram.title}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center gap-2 transition font-mono shadow-md"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-zinc-400" /> Join Waitlist
+                    </a>
+                  );
+                }
 
                 if (isActive) {
                   return (
@@ -2242,7 +2573,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                         setActiveTab("my_plan");
                         setDetailedProgram(null);
                       }}
-                      className="px-6 py-2.5 rounded-xl chrome-button text-xs font-semibold flex items-center gap-1.5"
+                      className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center gap-2"
                     >
                       Open Daily Plan <ArrowRight className="w-3.5 h-3.5" />
                     </button>
@@ -2257,7 +2588,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                       setDetailedProgram(null);
                       handleOpenQrisCheckout(progId);
                     }}
-                    className="px-6 py-2.5 rounded-xl chrome-button text-xs font-semibold flex items-center gap-1.5"
+                    className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center gap-2"
                   >
                     <QrCode className="w-3.5 h-3.5" /> Enroll Now (Rp {detailedProgram.price.toLocaleString("id-ID")})
                   </button>

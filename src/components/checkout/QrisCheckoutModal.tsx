@@ -147,90 +147,93 @@ export function QrisCheckoutModal({
     currentInvoice.locationType === "HYBRID";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
         data-lenis-prevent
-        className="w-full max-w-md glass-panel rounded-3xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col"
+        className="w-full max-w-md glass-panel rounded-3xl overflow-hidden shadow-2xl max-h-[92vh] flex flex-col border border-zinc-200/70 dark:border-white/10"
       >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-200 dark:border-white/10 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <QrCode className="w-4 h-4 text-zinc-900 dark:text-white" />
-            <span className="text-sm font-semibold text-zinc-900 dark:text-white">
-              QRIS Payment Checkout
+        <div className="px-7 py-5 border-b border-zinc-200/70 dark:border-white/10 flex items-center justify-between shrink-0">
+          <div className="space-y-0.5">
+            <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 block font-mono">
+              BMS Sanctuary &bull; Tuition Settlement
             </span>
+            <h3 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white flex items-center gap-2 font-geometric">
+              <QrCode className="w-4 h-4 text-zinc-400" />
+              <span>QRIS Secure Checkout</span>
+            </h3>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white transition"
+            className="p-2 rounded-full text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10 transition"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4 overflow-y-auto">
+        <div className="p-7 space-y-5 overflow-y-auto">
           {/* Program & Fee Summary */}
-          <div className="p-4 rounded-2xl glass-panel-subtle space-y-2">
-            <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
-              <span>Program Enrollment</span>
-              <span className="font-mono">{currentInvoice.paymentReference}</span>
+          <div className="p-5 rounded-2xl glass-panel-subtle space-y-3 border border-zinc-200/60 dark:border-white/10">
+            <div className="flex items-center justify-between text-micro uppercase tracking-wider text-zinc-400">
+              <span>Program Cohort</span>
+              <span className="font-mono text-zinc-500">{currentInvoice.paymentReference}</span>
             </div>
-            <h3 className="text-base font-semibold text-zinc-900 dark:text-white">
+            <h4 className="text-base font-light tracking-tight text-zinc-900 dark:text-white">
               {currentInvoice.programTitle}
-            </h3>
+            </h4>
 
-            {/* Attendance Mode Selector (On-Site vs Virtual) */}
+            {/* Attendance Modality Selector (On-Site vs Virtual) */}
             {isHybridOrOnsite && (
-              <div className="pt-2 border-t border-zinc-200/80 dark:border-white/10 space-y-1.5">
-                <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300 block">
-                  Pilihan Kehadiran Peserta:
+              <div className="pt-2 border-t border-zinc-200/70 dark:border-white/10 space-y-2">
+                <span className="text-micro uppercase tracking-wider font-semibold text-zinc-500 dark:text-zinc-400 block font-mono">
+                  Attendance Modality:
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => handleModeChange("IN_PERSON")}
-                    className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    className={`py-2 px-3 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition font-mono ${
                       attendanceMode === "IN_PERSON"
                         ? "chrome-button shadow-sm"
                         : "glass-panel-subtle text-zinc-700 dark:text-zinc-300"
                     }`}
                   >
-                    <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Hadir di Studio</span>
+                    <MapPin className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>In-Studio</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => handleModeChange("VIRTUAL")}
-                    className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    className={`py-2 px-3 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition font-mono ${
                       attendanceMode === "VIRTUAL"
                         ? "chrome-button shadow-sm"
                         : "glass-panel-subtle text-zinc-700 dark:text-zinc-300"
                     }`}
                   >
-                    <Video className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Live Stream Zoom</span>
+                    <Video className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Virtual Stream</span>
                   </button>
                 </div>
                 {(programVenue || currentInvoice.venueAddress) && attendanceMode === "IN_PERSON" && (
-                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 pt-0.5">
-                    Studio Venue: {programVenue || currentInvoice.venueAddress}
+                  <p className="text-micro text-zinc-500 dark:text-zinc-400 pt-0.5 font-mono">
+                    Studio Location: {programVenue || currentInvoice.venueAddress}
                   </p>
                 )}
               </div>
             )}
 
-            <div className="pt-2 border-t border-zinc-200 dark:border-white/10 flex items-baseline justify-between">
-              <span className="text-xs text-zinc-600 dark:text-zinc-400">
-                Total Payment
+            <div className="pt-2 border-t border-zinc-200/70 dark:border-white/10 flex items-baseline justify-between font-mono">
+              <span className="text-micro uppercase tracking-wider text-zinc-500">
+                Total Tuition
               </span>
-              <span className="text-base font-bold text-zinc-900 dark:text-white">
+              <span className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
                 Rp {currentInvoice.price.toLocaleString("id-ID")}
               </span>
             </div>
           </div>
 
           {/* 15-Minute Countdown */}
-          <div className="flex items-center justify-between px-4 py-2.5 rounded-xl glass-panel-subtle">
+          <div className="flex items-center justify-between px-4 py-2.5 rounded-xl glass-panel-subtle font-mono">
             <span className="text-xs text-zinc-600 dark:text-zinc-300 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-zinc-500" /> Payment Window (15 Mins)
             </span>
@@ -239,7 +242,7 @@ export function QrisCheckoutModal({
                 isExpired
                   ? "text-red-600 dark:text-red-400"
                   : secondsLeft < 180
-                  ? "text-amber-600 dark:text-amber-400"
+                  ? "text-zinc-500"
                   : "text-zinc-900 dark:text-white"
               }`}
             >
@@ -312,8 +315,8 @@ export function QrisCheckoutModal({
           )}
 
           {paidSuccess ? (
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300 flex items-center justify-center gap-2 font-medium">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <div className="p-3.5 rounded-xl bg-white/10 border border-white/20 text-xs text-zinc-900 dark:text-white flex items-center justify-center gap-2 font-medium font-mono">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-white" />
               <span>Payment confirmed! Opening your program...</span>
             </div>
           ) : (
@@ -322,7 +325,7 @@ export function QrisCheckoutModal({
                 type="button"
                 onClick={handleVerifyPayment}
                 disabled={isProcessing || isExpired}
-                className="w-full py-2.5 rounded-xl chrome-button text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                className="w-full py-3 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center justify-center gap-2 disabled:opacity-50 shadow-md"
               >
                 {isProcessing ? (
                   <>

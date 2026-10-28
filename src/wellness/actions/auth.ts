@@ -84,7 +84,7 @@ export async function wellnessSignUp(
 
   return {
     success: true,
-    message: "Account created! Welcome to the Wellness Sanctuary.",
+    message: "Account created! Welcome to BMS Sanctuary.",
     data: {
       id: newUser.id,
       email: newUser.email,
@@ -220,7 +220,7 @@ export async function wellnessRequestPasswordReset(
 
   await sendTransactionalEmail({
     to: email,
-    subject: "Wellness Sanctuary — Password Reset Request",
+    subject: "BMS Sanctuary — Password Reset Request",
     html: `<p>Click the link below to reset your password (valid for 15 minutes):</p><p><a href="${resetUrl}">${resetUrl}</a></p>`,
     text: `Reset Link (valid for 15 minutes): ${resetUrl}`,
   });

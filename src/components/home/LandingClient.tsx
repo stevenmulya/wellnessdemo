@@ -9,8 +9,6 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import {
   ArrowRight,
   ArrowUpRight,
-  Shield,
-  LayoutDashboard,
   Calendar,
   User,
   Users,
@@ -22,10 +20,10 @@ import {
   MessageCircle,
   Mail,
   MapPin,
-  Heart,
   Moon,
   Coffee,
-  Video,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 interface LandingClientProps {
@@ -40,9 +38,15 @@ interface LandingClientProps {
     title: string;
     slug: string;
     description: string;
+    category?: string | null;
     recommendedFor?: string | null;
     coachName?: string | null;
+    coachTitle?: string | null;
     durationDays?: number;
+    trainingDays?: number;
+    connectionDays?: number;
+    actualPrice?: number;
+    discountPercentage?: number;
     price: number;
     maxQuota: number;
     enrolledCount: number;
@@ -53,58 +57,34 @@ interface LandingClientProps {
     virtualFallbackAvailable?: boolean | null;
     startDate?: Date | string | null;
     endDate?: Date | string | null;
+    registrationOpenDate?: Date | string | null;
     registrationDeadline?: Date | string | null;
+    status?: string | null;
+    isPublished?: boolean;
     dayCount: number;
   }>;
 }
 
-const TESTIMONIALS = [
-  {
-    name: "Clarissa Wijaya",
-    role: "Creative Director",
-    cohort: "Cohort 01 • Movement Ritual",
-    quote:
-      "The 00:00 unlock gave me my mornings back. No endless scrolling—just 25 focused minutes of mobility, a clean meal guide, and a quiet sense of accomplishment.",
-    stat: "21 / 21 Days",
-  },
-  {
-    name: "Adrian Gunawan",
-    role: "Architect & Runner",
-    cohort: "Cohort 02 • Mobility Core",
-    quote:
-      "The combination of daily video routines and the evening 23:59 reflection created a discipline I couldn't build on my own. Truly quiet luxury.",
-    stat: "Zero Skipped Days",
-  },
-  {
-    name: "Nadia Kusuma",
-    role: "Founder",
-    cohort: "Cohort 03 • Breath & Sleep",
-    quote:
-      "Our Saturday morning offline studio meetup at Senopati felt so authentic. A rare digital wellness space that actually translates into real life.",
-    stat: "2 Cohorts Completed",
-  },
-];
-
 const COACH_PROFILES = [
   {
     name: "Marcus Vance",
-    role: "Lead Movement & Mobility Coach",
+    role: "Movement & Mobility Lead",
     specialty: "Functional Movement & Spine Longevity",
-    bio: "Former physical performance practitioner focusing on spinal decompression, joint mobility, and posture recovery for desk workers.",
+    bio: "Spinal decompression and joint resilience engineered for high-performing professionals.",
     image: "/coach.jpg",
   },
   {
     name: "Elena Rostova",
-    role: "Head of Nutrition & Longevity",
-    specialty: "Anti-Inflammatory Whole Foods",
-    bio: "Curates simple, repeatable daily meal protocols designed to stabilize metabolic energy and support natural cellular recovery.",
+    role: "Nutrition & Longevity Director",
+    specialty: "Anti-Inflammatory Protocols",
+    bio: "Metabolic energy stabilization through clean whole food curation without dietary fatigue.",
     image: "/coach2.jpg",
   },
   {
     name: "Julian Thorne",
-    role: "Breathwork & Nervous System Director",
+    role: "Breathwork & Recovery Lead",
     specialty: "Parasympathetic Recovery & Deep Sleep",
-    bio: "Guides breath regulation routines that transition high-stress executives into deep, restorative sleep cycles.",
+    bio: "Breath regulation protocols that guide intense schedules into deep restorative rest.",
     image: "/coach3.jpg",
   },
 ];
@@ -124,6 +104,19 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authTab, setAuthTab] = useState<"signin" | "signup" | "forgot">("signup");
   const [deletedNotice, setDeletedNotice] = useState(false);
+  const [activeCohortIdx, setActiveCohortIdx] = useState(0);
+
+  const displayCohorts = programs.slice(0, 5);
+
+  const handleNextCohort = () => {
+    if (displayCohorts.length === 0) return;
+    setActiveCohortIdx((prev) => (prev + 1) % displayCohorts.length);
+  };
+
+  const handlePrevCohort = () => {
+    if (displayCohorts.length === 0) return;
+    setActiveCohortIdx((prev) => (prev - 1 + displayCohorts.length) % displayCohorts.length);
+  };
 
   useEffect(() => {
     const authQuery = searchParams.get("auth");
@@ -137,65 +130,6 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
       setDeletedNotice(true);
     }
   }, [searchParams]);
-
-  // 1. ScrollTrigger Text & Element Appearance (Blur & Slide-In)
-  useEffect(() => {
-    const revealElements = document.querySelectorAll<HTMLElement>(".reveal-init");
-    if (revealElements.length === 0) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("reveal-active");
-          }
-        });
-      },
-      {
-        threshold: 0.12,
-        rootMargin: "0px 0px -50px 0px",
-      }
-    );
-
-    revealElements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
-
-  // 3. Ultra-Smooth Parallax Engine for Full-Width and Card Background Images
-  useEffect(() => {
-    let ticking = false;
-
-    const updateParallax = () => {
-      const parallaxEls = document.querySelectorAll<HTMLElement>("[data-parallax]");
-      const vh = window.innerHeight;
-
-      parallaxEls.forEach((el) => {
-        const rect = el.parentElement?.getBoundingClientRect() || el.getBoundingClientRect();
-        if (rect.bottom > -100 && rect.top < vh + 100) {
-          const speed = parseFloat(el.getAttribute("data-parallax") || "0.15");
-          const offset = (rect.top + rect.height / 2 - vh / 2) * speed;
-          el.style.transform = `translate3d(0, ${offset.toFixed(1)}px, 0) scale(1.15)`;
-        }
-      });
-      ticking = false;
-    };
-
-    const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateParallax);
-        ticking = true;
-      }
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll, { passive: true });
-    updateParallax();
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, []);
 
   const openAuth = (tab: "signin" | "signup" | "forgot" = "signup") => {
     setAuthTab(tab);
@@ -219,12 +153,12 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-x-hidden text-xs text-zinc-900 dark:text-zinc-100 silver-orange-canvas">
+    <div className="min-h-screen flex flex-col relative overflow-x-hidden text-zinc-900 dark:text-zinc-100 selection:bg-zinc-800 selection:text-white font-mono">
       {/* Account Deletion Notice */}
       {deletedNotice && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md glass-panel py-3 px-4 rounded-2xl text-xs font-medium flex items-center justify-between shadow-lg">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md glass-panel py-3 px-4 rounded-2xl text-xs font-mono flex items-center justify-between shadow-2xl">
           <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-orange-500" />
+            <CheckCircle2 className="w-4 h-4 text-zinc-300" />
             <span>Your account has been deleted.</span>
           </div>
           <button
@@ -237,52 +171,45 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
       )}
 
       {/* ===================================================================== */}
-      {/* FLOATING GLASS DOCK NAVIGATION                                       */}
+      {/* 1. FLOATING MINIMALIST GLASS NAVIGATION DOCK                          */}
       {/* ===================================================================== */}
       <header
         style={{ top: "max(1.25rem, env(safe-area-inset-top))" }}
-        className="fixed left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-5xl h-14 px-5 rounded-2xl blur-dock flex items-center justify-between transition-all duration-300"
+        className="fixed left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-4xl h-14 px-5 sm:px-6 rounded-full blur-dock flex items-center justify-between transition-all duration-300 border border-zinc-200/70 dark:border-white/15 shadow-xl"
       >
-        <Link href="/" className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-          <span className="font-bold text-xs uppercase tracking-[0.2em] text-zinc-900 dark:text-white">
-            Wellness
+        <Link href="/" className="flex items-center group">
+          <span className="font-geometric font-extralight text-sm tracking-[0.34em] text-zinc-900 dark:text-white uppercase">
+            BMS
           </span>
         </Link>
 
-        <nav className="flex items-center gap-4 sm:gap-6 text-[11px] font-medium">
+        <nav className="flex items-center gap-5 sm:gap-7 text-xs font-mono tracking-wide">
           <a
-            href="#community"
-            className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition hidden md:inline"
+            href="#about"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition"
           >
-            Community
-          </a>
-          <a
-            href="#stories"
-            className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition hidden sm:inline"
-          >
-            Stories
+            About
           </a>
           <a
             href="#programs"
-            className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition"
           >
-            Cohorts
+            Programs
           </a>
           <a
-            href="#team"
-            className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition hidden md:inline"
+            href="#coaches"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition hidden sm:inline"
           >
             Coaches
           </a>
           <a
             href="#contact"
-            className="text-zinc-600 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white transition"
+            className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition"
           >
-            Concierge
+            Contact
           </a>
 
-          <div className="h-3.5 w-px bg-zinc-300/80 dark:bg-white/15" />
+          <div className="h-3.5 w-px bg-zinc-300 dark:bg-white/15" />
 
           <ThemeToggle />
 
@@ -291,33 +218,33 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
               {sessionUser.role === "SUPERADMIN" && (
                 <Link
                   href="/admin"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel-subtle text-[11px] font-medium text-zinc-900 dark:text-white"
+                  className="px-3.5 py-1.5 rounded-full glass-panel-subtle text-[11px] font-mono font-medium text-zinc-900 dark:text-white hover:text-zinc-950 dark:hover:text-white transition"
                 >
-                  <Shield className="w-3 h-3" /> Admin
+                  Admin
                 </Link>
               )}
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl chrome-button text-[11px] font-medium"
+                className="px-4 py-1.5 rounded-full chrome-button text-[11px] font-mono font-medium"
               >
-                <LayoutDashboard className="w-3 h-3" /> Dashboard
+                Dashboard
               </Link>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => openAuth("signin")}
-                className="px-2.5 py-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white transition text-[11px] font-medium"
+                className="px-2.5 py-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition text-[11px] font-mono font-medium"
               >
                 Sign In
               </button>
               <button
                 type="button"
                 onClick={() => openAuth("signup")}
-                className="px-3.5 py-1.5 rounded-xl chrome-button text-[11px] font-medium"
+                className="px-4 py-1.5 rounded-full chrome-button text-[11px] font-mono font-medium shadow-sm"
               >
-                Create Account
+                Join
               </button>
             </div>
           )}
@@ -325,501 +252,362 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
       </header>
 
       {/* ===================================================================== */}
-      {/* 1. EYE CATCHING FULL WIDTH HOME HERO (WITH PIC.JPG FULL BACKGROUND)  */}
+      {/* 2. HERO: REFINED EDITORIAL LUXURY, SAFE FROSTED CONTAINER             */}
       {/* ===================================================================== */}
-      <section className="relative w-full min-h-[92vh] pt-32 pb-20 px-5 sm:px-8 flex items-center justify-center overflow-hidden">
-        {/* Full-width Ambient Motion Video with pic.jpg Poster Fallback & Parallax */}
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          poster="/pic.jpg"
-          data-parallax="0.08"
-          className="absolute inset-0 w-full h-full object-cover scale-110 pointer-events-none will-change-transform"
-        >
-          <source src="/video.mp4" type="video/mp4" />
-        </video>
-        {/* Luminous, light glass scrims so the ambient video/pic.jpg is fully visible and vibrant */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/25" />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-black/20" />
-
-        <div className="relative z-10 max-w-5xl mx-auto w-full space-y-6">
-          {/* Main Asymmetric Grid */}
-          <div className="grid lg:grid-cols-12 gap-6 items-stretch">
-            {/* Primary Hero Card (7 Columns) with Glassmorphic Overlay */}
-            <div className="lg:col-span-7 reveal-init relative rounded-3xl overflow-hidden glass-image-overlay border border-white/20 p-8 sm:p-12 min-h-[460px] flex flex-col justify-between text-white shadow-2xl">
-              <div className="space-y-5">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-semibold uppercase tracking-[0.16em]">
-                  <Sparkles className="w-3 h-3 text-orange-400" />
-                  <span>Private Cohort Platform</span>
-                </div>
-
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-semibold tracking-tight leading-[1.12]">
-                  Daily movement, clean food &{" "}
-                  <span className="font-serif-luxury italic font-normal text-orange-200">
-                    quiet longevity.
-                  </span>
-                </h1>
-
-                <p className="text-xs sm:text-sm text-zinc-200/90 leading-relaxed max-w-lg">
-                  Every morning at 00:00, your daily workout video and nutrition ritual unlock in sync with your 35-member cohort.
-                </p>
-              </div>
-
-              <div className="pt-4 flex flex-wrap items-center gap-3">
-                {sessionUser ? (
-                  <Link
-                    href="/dashboard"
-                    className="px-6 py-3 rounded-2xl chrome-button text-xs font-semibold inline-flex items-center gap-2 shadow-lg"
-                  >
-                    Enter Member Dashboard <ArrowRight className="w-4 h-4" />
-                  </Link>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => openAuth("signup")}
-                      className="px-6 py-3 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold inline-flex items-center gap-2 transition shadow-xl"
-                    >
-                      Create Free Account <ArrowRight className="w-4 h-4" />
-                    </button>
-                    <a
-                      href="#programs"
-                      className="px-5 py-3 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white transition text-xs font-medium"
-                    >
-                      Explore Cohorts
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Asymmetric Side Stack (5 Columns) */}
-            <div className="lg:col-span-5 flex flex-col justify-between gap-5">
-              {/* Card 1: 00:00 Synchronized Rhythm */}
-              <div className="reveal-init reveal-delay-100 glass-image-overlay rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-4 border border-white/15 text-white shadow-xl flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-2xl bg-white/10 flex items-center justify-center text-orange-400">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-300">
-                    Circadian Rhythm
-                  </span>
-                </div>
-                <div>
-                  <div className="text-3xl font-light tracking-tight text-white">
-                    00:00
-                  </div>
-                  <h3 className="text-xs font-semibold text-white mt-1">
-                    Morning Routine Unlock
-                  </h3>
-                  <p className="text-[11px] text-zinc-300 mt-1 leading-relaxed">
-                    A single intentional routine ready when you wake up. No decision fatigue.
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-white/15 text-[11px] text-orange-300 font-medium">
-                  23:59 Nightly Streak Cutoff
-                </div>
-              </div>
-
-              {/* Card 2: Intimate 35-Member Cohorts */}
-              <div className="reveal-init reveal-delay-200 glass-image-overlay rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-3 border border-white/15 text-white shadow-xl flex-1">
-                <div className="flex items-center justify-between">
-                  <div className="w-8 h-8 rounded-2xl bg-white/10 flex items-center justify-center text-orange-400">
-                    <Users className="w-4 h-4" />
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-300 text-[9px] font-semibold uppercase tracking-wider">
-                    Community Spirit
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold tracking-tight text-white">
-                    Intimate 35-Member Cohorts
-                  </h4>
-                  <p className="text-[11px] text-zinc-300 mt-1 leading-relaxed">
-                    Real accountability with verified members on the exact same daily rhythm.
-                  </p>
-                </div>
-                <div className="pt-2 border-t border-white/15 flex items-center justify-between text-[11px] text-zinc-300">
-                  <span>Weekly Studio Gathering</span>
-                  <span className="font-semibold text-white">Senopati, JKT</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===================================================================== */}
-      {/* 2. WELLNESS COMMUNITY INTRODUCTION (THE SANCTUARY CONCEPT)            */}
-      {/* ===================================================================== */}
-      <section id="community" className="py-20 px-5 sm:px-6">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="max-w-2xl space-y-2 reveal-init">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-              The Sanctuary Concept
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-              A private digital ecosystem designed for calm consistency.
-            </h2>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-              We replace endless fitness content with structured, time-bound cohort journeys. Members progress day-by-day together, building physical resilience without burnout.
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-3 gap-5">
-            {/* Feature 1 */}
-            <div className="reveal-init reveal-delay-100 glass-panel rounded-3xl p-6 sm:p-7 space-y-4">
-              <div className="w-10 h-10 rounded-2xl glass-panel-subtle flex items-center justify-center text-orange-500">
-                <Dumbbell className="w-4 h-4" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  One Guided Routine
-                </h3>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  20 to 30 minutes of intentional functional movement, core stability, and spinal decompression led by our head coach.
-                </p>
-              </div>
-            </div>
-
-            {/* Feature 2 */}
-            <div className="reveal-init reveal-delay-200 glass-panel rounded-3xl p-6 sm:p-7 space-y-4">
-              <div className="w-10 h-10 rounded-2xl glass-panel-subtle flex items-center justify-center text-orange-500">
-                <Coffee className="w-4 h-4" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  Clean Nutrition Guide
-                </h3>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  Anti-inflammatory whole food suggestions designed to reduce gut fatigue and sustain steady energy without restrictive dieting.
-                </p>
-              </div>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="reveal-init reveal-delay-300 glass-panel rounded-3xl p-6 sm:p-7 space-y-4">
-              <div className="w-10 h-10 rounded-2xl glass-panel-subtle flex items-center justify-center text-orange-500">
-                <Moon className="w-4 h-4" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">
-                  Rest Days & Gatherings
-                </h3>
-                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-                  Dedicated recovery days with breathwork rituals and offline weekend studio gatherings in South Jakarta.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===================================================================== */}
-      {/* 2B. FULL WIDTH SANCTUARY BREAK SECTION (WITH TEST.JPG FULL BACKGROUND)*/}
-      {/* ===================================================================== */}
-      <section className="relative w-full py-28 sm:py-36 overflow-hidden flex items-center justify-center px-5 sm:px-8 my-4">
-        {/* Full-width Section Background Image using test.jpg with Parallax */}
+      <section className="relative w-full min-h-[92vh] pt-36 pb-20 sm:pt-44 sm:pb-28 px-5 sm:px-8 flex items-center justify-center overflow-hidden">
+        {/* Full-width Ambient Motion Video & Fallback Poster */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <Image
-            src="/test.jpg"
-            alt="Sanctuary Movement Ritual"
-            fill
-            data-parallax="0.14"
-            className="object-cover object-center will-change-transform scale-110"
-          />
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            poster="/pic.jpg"
+            className="w-full h-full object-cover scale-105 opacity-65 dark:opacity-45"
+          >
+            <source src="/video.mp4" type="video/mp4" />
+          </video>
         </div>
-        {/* Luminous light scrim so test.jpg is vividly seen */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-black/35 pointer-events-none" />
 
-        <div className="relative z-10 max-w-3xl mx-auto w-full text-center text-white space-y-6">
-          <div className="reveal-init glass-image-overlay rounded-3xl p-8 sm:p-14 space-y-5 border border-white/20 shadow-2xl">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-300">
-              <Sparkles className="w-3 h-3" />
-              <span>Synchronized Movement Ritual</span>
-            </div>
+        {/* Filmic gradient scrim so text is 100% legible in light and dark modes */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/45 to-black/80 pointer-events-none" />
 
-            <h2 className="text-2xl sm:text-4xl font-bold tracking-tight leading-tight">
-              Never train in isolation again.
-            </h2>
+        <div className="relative z-10 max-w-4xl mx-auto w-full text-center space-y-7 my-auto">
+          {/* Polished Chrome Micro Badge */}
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full chrome-badge font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+            <span className="text-micro text-white/95 tracking-widest">
+              Private Cohort Sanctuary • 35 Cap
+            </span>
+          </div>
 
-            <p className="text-xs sm:text-sm text-zinc-200/90 leading-relaxed max-w-xl mx-auto">
-              Wake up with clarity. Every morning at 00:00, experience synchronized workouts and clean nutrition alongside your 35-person batch, culminating in offline studio gatherings.
-            </p>
+          {/* Main Editorial Headline - Thin Geometric */}
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-geometric font-extralight tracking-tight text-white leading-[1.08] max-w-3xl mx-auto">
+            Movement. Nourishment. <br />
+            <span className="font-light text-chrome-shine">Quiet Longevity.</span>
+          </h1>
 
-            {!sessionUser && (
-              <div className="pt-3">
-                <button
-                  type="button"
-                  onClick={() => openAuth("signup")}
-                  className="px-7 py-3.5 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-bold inline-flex items-center gap-2 transition shadow-2xl"
-                >
-                  <span>Register Free Account</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
+          {/* Punchy single subline */}
+          <p className="text-xs sm:text-sm text-zinc-300 font-mono font-light max-w-md mx-auto leading-relaxed">
+            Synchronized 00:00 morning protocols, clean whole food nourishment, and circadian rest tracking.
+          </p>
+
+          {/* Action buttons with Shiny Metal Chrome */}
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3.5 font-mono">
+            <a
+              href="#programs"
+              className="px-7 py-3 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-2"
+            >
+              <span>Explore Programs</span> <ArrowRight className="w-3.5 h-3.5 text-zinc-950 dark:text-zinc-950" />
+            </a>
+            {!sessionUser ? (
+              <button
+                type="button"
+                onClick={() => openAuth("signup")}
+                className="px-6 py-3 rounded-full chrome-badge text-xs font-medium tracking-wide transition duration-200 hover:bg-white/20"
+              >
+                Join Next Batch
+              </button>
+            ) : (
+              <Link
+                href="/dashboard"
+                className="px-6 py-3 rounded-full chrome-badge text-xs font-medium tracking-wide transition duration-200 hover:bg-white/20 inline-flex items-center gap-2"
+              >
+                <span>Open Dashboard</span> <ArrowUpRight className="w-3.5 h-3.5 text-zinc-200" />
+              </Link>
             )}
           </div>
         </div>
       </section>
 
       {/* ===================================================================== */}
-      {/* 3. TESTIMONIALS (MEMBER STORIES GRID)                                 */}
+      {/* 3. ABOUT: HIGH NEGATIVE SPACE EDITORIAL STATEMENT                     */}
       {/* ===================================================================== */}
-      <section id="stories" className="py-16 px-5 sm:px-6">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="reveal-init flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-                Member Experiences
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                Quiet transformations, shared.
-              </h2>
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs">
-              Hear from founders, directors, and professionals in our cohorts.
-            </p>
-          </div>
+      <section id="about" className="py-28 sm:py-40 px-6 sm:px-10">
+        <div className="max-w-2xl mx-auto text-center space-y-6">
+          <span className="text-micro text-zinc-400 block tracking-[0.28em] font-mono">
+            BMS Philosophy
+          </span>
 
-          <div className="grid sm:grid-cols-3 gap-5">
-            {TESTIMONIALS.map((t, i) => (
-              <div
-                key={i}
-                className={`reveal-init reveal-delay-${(i + 1) * 100} glass-panel rounded-3xl p-6 sm:p-7 flex flex-col justify-between space-y-5`}
-              >
-                <div className="space-y-3">
-                  <Quote className="w-5 h-5 text-orange-500/70" />
-                  <p className="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                    &ldquo;{t.quote}&rdquo;
-                  </p>
-                </div>
-
-                <div className="pt-4 border-t border-zinc-900/[0.06] dark:border-white/10 flex items-center justify-between text-[11px]">
-                  <div>
-                    <strong className="text-zinc-900 dark:text-white block font-semibold">
-                      {t.name}
-                    </strong>
-                    <span className="text-zinc-500 dark:text-zinc-400 text-[10px]">
-                      {t.role}
-                    </span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full glass-panel-subtle text-[10px] text-zinc-700 dark:text-zinc-300 font-medium">
-                    {t.stat}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ===================================================================== */}
-      {/* 4. ACTIVE PROGRAMS (FULL BACKGROUND IMAGE CARDS WITH PARALLAX)         */}
-      {/* ===================================================================== */}
-      <section id="programs" className="py-16 px-5 sm:px-6">
-        <div className="max-w-5xl mx-auto space-y-8">
-          <div className="reveal-init flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-                Active & Upcoming Batches
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-                Choose your cohort journey.
-              </h2>
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-xs">
-              Strictly limited to 35 participants per batch to maintain intimacy.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            {programs.map((prog, idx) => {
-              const startDate = formatDate(prog.startDate);
-              const remainingSpots = Math.max(0, prog.maxQuota - prog.enrolledCount);
-
-              return (
-                <div
-                  key={prog.id}
-                  className={`reveal-init reveal-delay-${(idx + 1) * 100} relative rounded-3xl overflow-hidden glass-panel border border-white/60 dark:border-white/10 min-h-[380px] p-6 sm:p-7 flex flex-col justify-between group shadow-xl`}
-                >
-                  {/* Full background image of cohort with parallax */}
-                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                    <Image
-                      src={idx % 2 === 0 ? "/test.jpg" : "/pic.jpg"}
-                      alt={prog.title}
-                      fill
-                      data-parallax="0.10"
-                      className="object-cover object-center will-change-transform scale-110 group-hover:scale-115 transition-transform duration-700"
-                    />
-                  </div>
-                  {/* Lighter scrim so the cohort background photo is vibrant and clear */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/20 pointer-events-none" />
-
-                  {/* Top Badges */}
-                  <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="px-3 py-1 rounded-full glass-image-overlay text-[10px] font-semibold uppercase tracking-wider text-white">
-                        {prog.dayCount} Days
-                      </span>
-
-                      {prog.locationType === "ONSITE" && (
-                        <span className="px-2.5 py-1 rounded-full bg-amber-500/25 border border-amber-400/40 text-[10px] font-semibold text-amber-200 backdrop-blur-md flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-amber-300" />
-                          <span>On-Site • {prog.city || "Studio"}</span>
-                        </span>
-                      )}
-
-                      {prog.locationType === "HYBRID" && (
-                        <span className="px-2.5 py-1 rounded-full bg-purple-500/25 border border-purple-400/40 text-[10px] font-semibold text-purple-200 backdrop-blur-md flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-purple-300" />
-                          <span>Hybrid • {prog.city || "Studio"}</span>
-                        </span>
-                      )}
-
-                      {(!prog.locationType || prog.locationType === "ONLINE") && (
-                        <span className="px-2.5 py-1 rounded-full bg-blue-500/25 border border-blue-400/40 text-[10px] font-semibold text-blue-200 backdrop-blur-md">
-                          🌐 100% Online
-                        </span>
-                      )}
-                    </div>
-
-                    <span className="px-3 py-1 rounded-full glass-image-overlay text-[11px] font-medium text-white flex items-center gap-1.5">
-                      <Users className="w-3 h-3 text-orange-400" />
-                      <span>{remainingSpots} spots remaining</span>
-                    </span>
-                  </div>
-
-                  {/* Bottom Floating Glassmorphic Content Card */}
-                  <div className="relative z-10 glass-image-overlay rounded-2xl p-5 space-y-3 text-white border border-white/20 backdrop-blur-xl">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2 text-[11px] text-zinc-300">
-                        <span className="flex items-center gap-1">
-                          <User className="w-3 h-3 text-orange-400" /> {prog.coachName}
-                        </span>
-                        {startDate && (
-                          <>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-orange-400" /> Starts {startDate}
-                            </span>
-                          </>
-                        )}
-                      </div>
-
-                      <h3 className="text-lg sm:text-xl font-bold tracking-tight text-white">
-                        {prog.title}
-                      </h3>
-
-                      <p className="text-xs text-zinc-200/90 line-clamp-2 leading-relaxed">
-                        {prog.description}
-                      </p>
-
-                      {prog.locationType !== "ONLINE" && prog.virtualFallbackAvailable && (
-                        <div className="pt-1 flex items-center gap-1.5 text-[11px] text-orange-200/90">
-                          <Video className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span>Peserta luar kota: Live streaming Zoom tersedia</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-3 border-t border-white/15 flex items-center justify-between gap-4">
-                      <div>
-                        <span className="text-[10px] uppercase tracking-wider text-zinc-400 block">
-                          Tuition
-                        </span>
-                        <span className="text-base font-bold text-white">
-                          Rp {prog.price.toLocaleString("id-ID")}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleProgramAction(prog.id)}
-                        className="px-5 py-2.5 rounded-xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold inline-flex items-center gap-1.5 transition shadow"
-                      >
-                        {sessionUser ? (
-                          <>
-                            Open Dashboard <ArrowRight className="w-3.5 h-3.5" />
-                          </>
-                        ) : (
-                          <>
-                            Join Cohort <ArrowRight className="w-3.5 h-3.5" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* ===================================================================== */}
-      {/* 5. TEAM / PRACTITIONER COACH PROFILES (IMAGE AS FULL CARD BACKGROUND) */}
-      {/* ===================================================================== */}
-      <section id="team" className="py-16 px-5 sm:px-6">
-        <div className="max-w-5xl mx-auto space-y-10">
-          <div className="reveal-init max-w-xl space-y-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-              Practitioners & Coaches
+          <h2 className="text-3xl sm:text-5xl font-geometric font-extralight tracking-tight text-zinc-900 dark:text-white leading-[1.18]">
+            Consistency over intensity. <br />
+            <span className="font-light text-zinc-400 dark:text-zinc-500">
+              Discipline in quiet ease.
             </span>
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
-              Guided by dedicated specialists.
-            </h2>
-            <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              Each movement sequence, meal protocol, and breath gathering is designed by our core team.
-            </p>
+          </h2>
+
+          <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed font-mono font-light">
+            One focused daily protocol unlocked at dawn alongside 35 verified peers. Simple, repeatable, sustainable.
+          </p>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 5. PROGRAMS: HORIZONTAL CURATED COHORT SHOWCASE                       */}
+      {/* ===================================================================== */}
+      <section id="programs" className="py-20 sm:py-28 px-6 sm:px-10">
+        <div className="max-w-5xl mx-auto space-y-6">
+          {/* Header: Clean Title on Left, ONLY Previous & Next Buttons on Right */}
+          <div className="flex items-end justify-between border-b border-zinc-200/60 dark:border-white/10 pb-5">
+            <div className="space-y-1">
+              <span className="text-micro text-zinc-500 dark:text-zinc-400 block tracking-[0.28em] font-mono uppercase">
+                Curated Cohorts
+              </span>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white">
+                Select your cohort journey.
+              </h2>
+            </div>
+
+            {/* ONLY PREVIOUS AND NEXT BUTTONS */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handlePrevCohort}
+                aria-label="Previous cohort"
+                className="w-11 h-11 rounded-full border border-zinc-300 dark:border-white/20 bg-zinc-100 dark:bg-zinc-900/80 hover:bg-zinc-200 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 active:scale-90 shadow-sm"
+              >
+                <ChevronLeft className="w-5 h-5 text-zinc-800 dark:text-zinc-200" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNextCohort}
+                aria-label="Next cohort"
+                className="w-11 h-11 rounded-full border border-zinc-300 dark:border-white/20 bg-zinc-100 dark:bg-zinc-900/80 hover:bg-zinc-200 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 active:scale-90 shadow-sm"
+              >
+                <ChevronRight className="w-5 h-5 text-zinc-800 dark:text-zinc-200" />
+              </button>
+            </div>
           </div>
 
-          <div className="grid sm:grid-cols-3 gap-6">
+          {/* Panoramic Luxury Cohort Card Track */}
+          <div className="relative overflow-hidden rounded-3xl border border-zinc-200/80 dark:border-white/15 bg-zinc-950 shadow-2xl">
+            <div
+              className="flex transition-transform duration-500 ease-out"
+              style={{ transform: `translateX(-${activeCohortIdx * 100}%)` }}
+            >
+              {displayCohorts.map((prog, idx) => {
+                const startDate = formatDate(prog.startDate);
+                const regOpenDate = formatDate(prog.registrationOpenDate);
+
+                const now = new Date();
+                const regOpen = prog.registrationOpenDate ? new Date(prog.registrationOpenDate) : null;
+                const regDeadline = prog.registrationDeadline ? new Date(prog.registrationDeadline) : null;
+
+                // Status evaluation:
+                // If registrationOpenDate is not reached yet (or TBA): COMING SOON
+                const isComingSoon = regOpen ? now < regOpen : true;
+                const isRegistrationClosed = regDeadline ? now > regDeadline : false;
+                const isJoinNow = !isComingSoon && !isRegistrationClosed;
+
+                // Attendance label: strictly "Online", "On-Site", or "Online + Onsite"
+                const attendanceLabel =
+                  prog.locationType === "ONLINE"
+                    ? "Online"
+                    : prog.locationType === "ONSITE"
+                    ? `On-Site • ${prog.city || "Jakarta"}`
+                    : `Online + Onsite • ${prog.city || "Jakarta"}`;
+
+                const cohortImages = ["/test.jpg", "/pic.jpg", "/image.jpg", "/coach.jpg", "/coach2.jpg"];
+                const cohortImage = cohortImages[idx % cohortImages.length];
+
+                return (
+                  <div key={prog.id} className="w-full shrink-0 min-w-full">
+                    <div className="relative min-h-[440px] sm:min-h-[480px] p-7 sm:p-12 md:p-14 flex flex-col justify-between overflow-hidden">
+                      {/* Background Image with Deep Cinematic Vignette */}
+                      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                        <Image
+                          src={cohortImage}
+                          alt={prog.title}
+                          fill
+                          priority={idx === 0}
+                          className="object-cover object-center scale-100 transition-transform duration-1000 ease-out brightness-[0.7] contrast-[1.05]"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/75 to-black/45 pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-transparent pointer-events-none" />
+                      </div>
+
+                      {/* TOP ROW: STRICTLY THE 3 BADGES */}
+                      <div className="relative z-10 flex flex-wrap items-center gap-2.5 font-mono">
+                        {/* Badge 1: Training Days */}
+                        <span className="px-4 py-1.5 rounded-full chrome-badge text-xs font-mono font-medium text-zinc-200">
+                          {prog.trainingDays || prog.durationDays || 3} Training Days
+                        </span>
+
+                        {/* Badge 2: Attendance Mode (Online, On-Site, Online + Onsite) */}
+                        <span className="px-4 py-1.5 rounded-full chrome-badge text-xs font-mono font-medium text-zinc-200">
+                          {attendanceLabel}
+                        </span>
+
+                        {/* Badge 3: Ultra Prominent Status Badge */}
+                        {isComingSoon ? (
+                          <span className="px-4 py-1.5 rounded-full bg-zinc-900/90 border-2 border-white/60 text-white font-mono font-bold text-xs tracking-wider shadow-2xl flex items-center gap-2 ring-2 ring-white/20 backdrop-blur-md">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                            <span>COMING SOON</span>
+                          </span>
+                        ) : isJoinNow ? (
+                          <span className="px-4 py-1.5 rounded-full bg-white text-zinc-950 font-mono font-bold text-xs tracking-wider shadow-2xl flex items-center gap-2 ring-2 ring-white/50">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                            <span>JOIN NOW</span>
+                          </span>
+                        ) : (
+                          <span className="px-4 py-1.5 rounded-full bg-zinc-900/90 border border-zinc-700 text-zinc-400 font-mono font-bold text-xs tracking-wider">
+                            <span>REGISTRATION CLOSED</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* CENTER / MAIN CONTENT: CLEAN LUXURY TYPOGRAPHY (NO BULKY DESCRIPTIONS) */}
+                      <div className="relative z-10 max-w-2xl space-y-4 my-auto py-6">
+                        <div className="text-xs text-zinc-300 font-mono tracking-wider flex items-center gap-2 flex-wrap">
+                          <span>
+                            Lead: {prog.coachName}
+                            {prog.coachTitle ? ` (${prog.coachTitle})` : ""}
+                          </span>
+                          {startDate && (
+                            <>
+                              <span className="text-zinc-500">•</span>
+                              <span>Starts {startDate}</span>
+                            </>
+                          )}
+                          {prog.category && (
+                            <>
+                              <span className="text-zinc-500">•</span>
+                              <span className="text-zinc-400">{prog.category}</span>
+                            </>
+                          )}
+                        </div>
+
+                        <h3 className="text-2xl sm:text-4xl md:text-5xl font-geometric font-extralight tracking-tight text-white leading-[1.14]">
+                          {prog.title}
+                        </h3>
+
+                        {/* RECOMMENDED FOR MESSAGE */}
+                        <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white/[0.08] border border-white/15 text-xs font-mono backdrop-blur-md">
+                          <Sparkles className="w-3.5 h-3.5 text-zinc-300 shrink-0" />
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-zinc-400 shrink-0">
+                            Recommended For:
+                          </span>
+                          <span className="text-zinc-100 font-medium">
+                            {prog.recommendedFor || "Desk Professionals & Sedentary Workers"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* BOTTOM ROW: CLEAN BUTTON WITH PRICE DIRECTLY INSIDE */}
+                      <div className="relative z-10 pt-4 flex items-center justify-between gap-4 font-mono">
+                        <div className="hidden sm:block text-micro text-zinc-400 font-light">
+                          {prog.venueAddress || "BMS Sanctuary • Jakarta"}
+                        </div>
+
+                        <div>
+                          {isComingSoon ? (
+                            <div className="flex flex-col items-end gap-1">
+                              <button
+                                type="button"
+                                disabled
+                                className="px-7 py-3.5 rounded-full bg-zinc-900/80 border border-white/20 text-xs font-mono font-semibold tracking-wide inline-flex items-center gap-3 text-zinc-400 cursor-not-allowed shadow-xl backdrop-blur-md opacity-80"
+                              >
+                                <span>Coming Soon</span>
+                                {prog.price > 0 && (
+                                  <>
+                                    <span className="w-px h-3.5 bg-zinc-700" />
+                                    <span className="text-zinc-300">Rp {prog.price.toLocaleString("id-ID")}</span>
+                                  </>
+                                )}
+                              </button>
+                              <span className="text-[10px] text-zinc-400 font-mono">
+                                {regOpenDate ? `Registration opens ${regOpenDate}` : "Registration date TBA"}
+                              </span>
+                            </div>
+                          ) : isJoinNow ? (
+                            <button
+                              type="button"
+                              onClick={() => handleProgramAction(prog.id)}
+                              className="px-7 py-3.5 rounded-full bg-white text-zinc-950 hover:bg-zinc-100 text-xs font-mono font-semibold tracking-wide inline-flex items-center gap-3 transition-all duration-200 hover:scale-[1.02] shadow-xl"
+                            >
+                              {sessionUser && prog.isUserEnrolled ? (
+                                <>
+                                  <span>Enrolled • Dashboard</span>
+                                  <ArrowRight className="w-4 h-4 text-zinc-950" />
+                                </>
+                              ) : (
+                                <>
+                                  <span className="font-bold">Join Now</span>
+                                  <span className="w-px h-3.5 bg-zinc-950/25" />
+                                  {prog.actualPrice && prog.actualPrice > prog.price && (
+                                    <span className="line-through text-zinc-500 text-[11px] font-normal">
+                                      Rp {prog.actualPrice.toLocaleString("id-ID")}
+                                    </span>
+                                  )}
+                                  <span className="font-bold">Rp {prog.price.toLocaleString("id-ID")}</span>
+                                  <ArrowRight className="w-4 h-4 text-zinc-950 ml-0.5" />
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled
+                              className="px-7 py-3.5 rounded-full bg-zinc-900 border border-zinc-700 text-xs font-mono font-semibold tracking-wide text-zinc-500 cursor-not-allowed shadow-xl"
+                            >
+                              Registration Closed
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 6. COACHES & MENTORS: EDITORIAL PORTRAIT GALLERY                      */}
+      {/* ===================================================================== */}
+      <section id="coaches" className="py-24 sm:py-32 px-6 sm:px-10">
+        <div className="max-w-5xl mx-auto space-y-10">
+          <div className="max-w-xl space-y-2 border-b border-zinc-900/[0.08] dark:border-white/10 pb-6 font-mono">
+            <span className="text-micro text-zinc-400 block tracking-[0.28em]">
+              Faculty &bull; Mentors
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-geometric font-extralight tracking-tight text-zinc-900 dark:text-white">
+              Guided by specialists.
+            </h2>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-6 font-mono">
             {COACH_PROFILES.map((coach, idx) => (
               <div
                 key={idx}
-                className={`reveal-init reveal-delay-${(idx + 1) * 100} relative rounded-3xl overflow-hidden glass-panel border border-white/60 dark:border-white/10 min-h-[470px] p-6 sm:p-7 flex flex-col justify-between group shadow-xl`}
+                className="relative rounded-3xl overflow-hidden min-h-[420px] p-6 sm:p-7 flex flex-col justify-between group shadow-xl border border-white/60 dark:border-white/10"
               >
-                {/* Image is the FULL BACKGROUND of the entire widget with Parallax */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                   <Image
                     src={coach.image}
                     alt={coach.name}
                     fill
-                    data-parallax="0.12"
-                    className="object-cover object-top will-change-transform scale-110 group-hover:scale-115 transition-transform duration-700"
+                    className="object-cover object-top group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
                 </div>
-                {/* Luminous gradient scrim so coach portrait is vivid while overlay text stays crisp */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-black/15 pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/35 to-black/15 pointer-events-none" />
 
-                {/* Top Badge */}
                 <div className="relative z-10 flex items-center justify-between">
-                  <span className="px-3 py-1 rounded-full glass-image-overlay text-[10px] font-semibold uppercase tracking-wider text-white">
+                  <span className="px-3.5 py-1 rounded-full chrome-badge text-micro text-white">
                     {coach.specialty.split("&")[0].trim()}
                   </span>
-                  <span className="w-2 h-2 rounded-full bg-orange-500 shadow-sm shadow-orange-500/50" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
                 </div>
 
-                {/* Floating Glassmorphic Text Card on top of background image */}
-                <div className="relative z-10 glass-image-overlay rounded-2xl p-4 sm:p-5 space-y-2 text-white border border-white/20 backdrop-blur-xl">
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold tracking-tight text-white">
-                      {coach.name}
-                    </h3>
-                    <span className="text-[10px] uppercase tracking-wider text-orange-400 font-semibold block">
-                      {coach.role}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-200/90 leading-relaxed line-clamp-2">
-                    {coach.bio}
-                  </p>
-                  <div className="pt-2 border-t border-white/15 text-[10px] text-zinc-300 flex items-center justify-between">
-                    <span>Specialty Focus</span>
-                    <span className="font-medium text-white">{coach.specialty}</span>
-                  </div>
+                <div className="relative z-10 space-y-1 text-white">
+                  <h3 className="text-xl font-geometric font-light tracking-tight text-white">
+                    {coach.name}
+                  </h3>
+                  <span className="text-micro text-zinc-300 font-light block">
+                    {coach.role}
+                  </span>
                 </div>
               </div>
             ))}
@@ -828,13 +616,28 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
       </section>
 
       {/* ===================================================================== */}
-      {/* 6. PARTNERS (MINIMAL LUXURY LOGO RIBBON)                             */}
+      {/* 7. MEMBER STORY / EDITORIAL QUOTE                                     */}
       {/* ===================================================================== */}
-      <section id="partners" className="py-12 px-5 sm:px-6 border-t border-zinc-900/[0.06] dark:border-white/10">
+      <section className="py-24 sm:py-36 px-6 sm:px-10 border-t border-zinc-900/[0.06] dark:border-white/10 font-mono">
+        <div className="max-w-3xl mx-auto text-center space-y-6">
+          <Quote className="w-7 h-7 text-zinc-400 dark:text-zinc-600 mx-auto" />
+          <blockquote className="font-geometric text-2xl sm:text-3xl text-zinc-800 dark:text-zinc-200 font-light leading-snug">
+            &ldquo;The 00:00 unlock gave me my mornings back. No endless scrolling—just 25 focused minutes, a clean meal guide, and a quiet sense of accomplishment.&rdquo;
+          </blockquote>
+          <div className="text-micro text-zinc-500 dark:text-zinc-400 font-mono font-medium tracking-[0.2em]">
+            Clarissa Wijaya — Creative Director, Cohort 01
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================================== */}
+      {/* 8. PARTNERS: QUIET MINIMALIST STRIP                                   */}
+      {/* ===================================================================== */}
+      <section className="py-14 px-6 sm:px-10 border-t border-zinc-900/[0.06] dark:border-white/10 font-mono">
         <div className="max-w-5xl mx-auto space-y-6">
-          <div className="reveal-init text-center space-y-1">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 block">
-              Collaborations & Studio Venues
+          <div className="text-center">
+            <span className="text-micro text-zinc-400 tracking-[0.24em] block">
+              Collaborations &amp; Studio Partners
             </span>
           </div>
 
@@ -842,9 +645,9 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
             {BRAND_PARTNERS.map((p, idx) => (
               <div
                 key={idx}
-                className={`reveal-init reveal-delay-${((idx % 3) + 1) * 100} glass-panel rounded-2xl p-4 text-center flex flex-col items-center justify-center gap-1`}
+                className="glass-panel-subtle rounded-2xl py-3.5 px-3 text-center flex flex-col items-center justify-center gap-0.5 border border-zinc-200/60 dark:border-white/10"
               >
-                <span className="text-xs font-bold tracking-widest uppercase text-zinc-900 dark:text-white">
+                <span className="text-xs font-semibold tracking-widest uppercase text-zinc-900 dark:text-white">
                   {p.name}
                 </span>
                 <span className="text-[10px] text-zinc-500 dark:text-zinc-400">
@@ -857,79 +660,75 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
       </section>
 
       {/* ===================================================================== */}
-      {/* 7. FULL WIDTH CONTACT CONCIERGE (WITH PIC.JPG FULL BACKGROUND)        */}
+      {/* 9. CONTACT & CONCIERGE: DIGNIFIED GLASS SANCTUARY                      */}
       {/* ===================================================================== */}
-      <section id="contact" className="relative w-full py-28 sm:py-36 overflow-hidden flex items-center justify-center px-5 sm:px-8">
-        {/* Full-width Section Background Image using pic.jpg with Parallax */}
+      <section id="contact" className="relative w-full py-28 sm:py-36 overflow-hidden flex items-center justify-center px-6 sm:px-10 font-mono">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <Image
             src="/pic.jpg"
-            alt="Sanctuary Studio Concierge"
+            alt="Sanctuary Concierge"
             fill
-            data-parallax="0.12"
-            className="object-cover object-center will-change-transform scale-110"
+            className="object-cover object-center"
           />
         </div>
-        {/* Luminous light scrim so pic.jpg shines through clearly */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/25 to-black/35 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-black/65 pointer-events-none" />
 
-        <div className="reveal-init relative z-10 max-w-xl mx-auto w-full text-center text-white">
-          <div className="glass-image-overlay rounded-3xl p-8 sm:p-14 space-y-6 border border-white/20 shadow-2xl">
-            <div className="space-y-2">
-              <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-orange-400 block">
-                Direct Concierge
+        <div className="relative z-10 max-w-xl mx-auto w-full text-center text-white">
+          <div className="glass-panel rounded-3xl p-8 sm:p-12 space-y-5 border border-white/20 shadow-2xl backdrop-blur-2xl">
+            <div className="space-y-1.5">
+              <span className="text-micro text-zinc-300 tracking-[0.24em] block font-mono">
+                Private Concierge
               </span>
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-geometric font-light tracking-tight">
                 Connect with our team.
               </h2>
-              <p className="text-xs text-zinc-200 leading-relaxed">
-                Have questions regarding upcoming cohort dates or studio access? Reach out directly to our concierge team.
+              <p className="text-xs text-zinc-300 font-light leading-relaxed font-mono">
+                Inquire regarding upcoming cohort placements or studio access in South Jakarta.
               </p>
             </div>
 
-            {/* Direct Contact Buttons (NO Form Fields) */}
-            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2 font-mono">
               <a
-                href="https://wa.me/6281290002026?text=Hello%20Wellness%20Sanctuary,%20I%20would%20like%20to%20inquire%20about%20the%20upcoming%20cohort."
+                href="https://wa.me/6281290002026?text=Hello%20BMS%20Sanctuary,%20I%20would%20like%20to%20inquire%20about%20the%20upcoming%20cohort."
                 target="_blank"
                 rel="noopener noreferrer"
-                className="px-6 py-3 rounded-2xl bg-white hover:bg-zinc-100 text-zinc-950 text-xs font-semibold inline-flex items-center gap-2 transition shadow-xl"
+                className="px-6 py-3 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-2"
               >
-                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <MessageCircle className="w-4 h-4 text-zinc-950 dark:text-zinc-950" />
                 <span>Chat via WhatsApp</span>
               </a>
 
               <a
-                href="mailto:concierge@wellness.id?subject=Cohort%20Inquiry"
-                className="px-6 py-3 rounded-2xl bg-white/10 hover:bg-white/20 border border-white/15 text-white transition text-xs font-medium inline-flex items-center gap-2"
+                href="mailto:concierge@bms.id?subject=Cohort%20Inquiry"
+                className="px-6 py-3 rounded-full chrome-badge transition text-xs font-medium tracking-wide inline-flex items-center gap-2 hover:bg-white/20"
               >
-                <Mail className="w-4 h-4" />
+                <Mail className="w-4 h-4 text-zinc-300" />
                 <span>Email Concierge</span>
               </a>
             </div>
 
-            <div className="pt-4 border-t border-white/10 text-[11px] text-zinc-300 flex items-center justify-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <span>Studio: Senopati, South Jakarta • Open for registered cohorts</span>
+            <div className="pt-3 border-t border-white/15 text-micro text-zinc-300 flex items-center justify-center gap-2 font-mono">
+              <MapPin className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+              <span>Studio: Senopati, South Jakarta • By Appointment</span>
             </div>
           </div>
         </div>
       </section>
 
       {/* ===================================================================== */}
-      {/* MINIMAL FOOTER                                                        */}
+      {/* 10. MINIMAL FOOTER                                                    */}
       {/* ===================================================================== */}
-      <footer className="mt-auto py-8 px-6 border-t border-zinc-900/[0.06] dark:border-white/10 text-zinc-500 text-[11px]">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-            <span className="font-semibold text-zinc-900 dark:text-white uppercase tracking-wider text-[10px]">
-              Wellness
+      <footer className="mt-auto py-10 px-6 sm:px-10 border-t border-zinc-900/[0.08] dark:border-white/10 text-zinc-500 text-xs font-mono">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5">
+          <div className="flex items-center gap-2.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+            <span className="font-geometric font-extralight text-zinc-900 dark:text-white uppercase tracking-[0.32em] text-xs">
+              BMS
             </span>
-            <span>• Private Movement & Longevity Platform</span>
+            <span className="text-zinc-400 font-light">• Minimalist Longevity Sanctuary</span>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-5 text-micro">
             {!sessionUser && (
               <>
                 <button
@@ -944,11 +743,11 @@ export function LandingClient({ sessionUser, programs }: LandingClientProps) {
                   onClick={() => openAuth("signup")}
                   className="hover:text-zinc-900 dark:hover:text-white transition"
                 >
-                  Create Account
+                  Join
                 </button>
               </>
             )}
-            <span>© 2026 Wellness</span>
+            <span className="text-zinc-400">© 2026 BMS Sanctuary</span>
           </div>
         </div>
       </footer>

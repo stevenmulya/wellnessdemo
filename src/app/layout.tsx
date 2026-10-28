@@ -1,26 +1,26 @@
 import type { Metadata, Viewport } from "next";
-import { Cormorant_Garamond, Plus_Jakarta_Sans } from "next/font/google";
+import { Urbanist, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SmoothScroll } from "@/components/providers/SmoothScroll";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { AuraBackground } from "@/components/ui/AuraBackground";
 
-const cormorant = Cormorant_Garamond({
+const urbanist = Urbanist({
   subsets: ["latin"],
-  variable: "--font-serif",
-  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-geometric",
+  weight: ["100", "200", "300", "400", "500", "600", "700"],
   display: "swap",
 });
 
-const plusJakarta = Plus_Jakarta_Sans({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-sans",
+  variable: "--font-mono",
   weight: ["300", "400", "500", "600", "700"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "WELLNESS — Minimalist Movement & Longevity Sanctuary",
+  title: "BMS — Minimalist Longevity & Movement Sanctuary",
   description: "Curated daily physical vitality protocols, anti-inflammatory nutrition, and mindful habit tracking.",
   manifest: "/manifest.json",
 };
@@ -49,7 +49,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body
-        className={`${plusJakarta.variable} ${cormorant.variable} min-h-screen relative overflow-x-hidden antialiased`}
+        className={`${urbanist.variable} ${jetbrainsMono.variable} font-sans min-h-screen relative overflow-x-hidden antialiased`}
       >
         <ThemeProvider>
           <SmoothScroll>

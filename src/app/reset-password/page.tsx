@@ -76,8 +76,8 @@ function ResetPasswordForm() {
       )}
 
       {successMsg && (
-        <div className="flex items-start gap-2.5 p-3.5 text-xs rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300">
-          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+        <div className="flex items-start gap-2.5 p-3.5 text-xs rounded-2xl bg-white/10 border border-white/20 text-zinc-900 dark:text-white font-mono">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-zinc-300 mt-0.5" />
           <p className="leading-relaxed">{successMsg}</p>
         </div>
       )}

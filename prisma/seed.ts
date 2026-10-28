@@ -77,12 +77,26 @@ async function main() {
       startDate: prog1StartDate,
       endDate: prog1EndDate,
       isPublished: true,
+      status: "ACTIVE",
       days: {
         create: [
           {
             dayNumber: 1,
             title: "Awakening Spinal Alignment & Diaphragmatic Breath",
             dayType: "TRAINING_DAY",
+            workoutOptions: JSON.stringify([
+              "Hot Pilates",
+              "Strength Workout",
+              "Outdoor Running",
+              "Yoga & Mobility Flow",
+              "Cardio / HIIT",
+            ]),
+            sleepRecommendation: "Target 8 Jam • Tidur sebelum 22:30 WIB",
+            dayNotifications: JSON.stringify([
+              { time: "07:00", label: "Pagi • Movement Ritual", message: "Sesi movement hari ini telah terbuka. Luangkan 25 menit untuk latihan & upload foto before-after Anda." },
+              { time: "12:30", label: "Siang • Clean Nourishment", message: "Waktunya santap siang mindful. Cek rekomendasi nutrisi coach & catat kepatuhan makan Anda." },
+              { time: "20:30", label: "Malam • Dear Diary & Cutoff", message: "Tuliskan Dear Diary harian, beri rating kebahagiaan, dan catat target jam tidur sebelum cutoff 23:59." }
+            ]),
             videoUrl: "https://www.youtube.com/watch?v=sTANio_2E0Q",
             videoChecklist: JSON.stringify([
               "5 min diaphragmatic breathing & posture check",
@@ -102,6 +116,13 @@ async function main() {
             dayNumber: 2,
             title: "Deep Core Bracing & Pelvic Stability",
             dayType: "TRAINING_DAY",
+            workoutOptions: JSON.stringify([
+              "Hot Pilates",
+              "Strength Workout",
+              "Outdoor Running",
+              "Mat Pilates Core",
+            ]),
+            sleepRecommendation: "Target 8 Jam • Tidur sebelum 22:30 WIB",
             videoUrl: "https://www.youtube.com/watch?v=v7AYKMP6rOE",
             videoChecklist: JSON.stringify([
               "Bird-dog posture hold (3 sets x 30s)",
@@ -121,6 +142,18 @@ async function main() {
             dayNumber: 3,
             title: "Thoracic Opening & Shoulder Decompression",
             dayType: "TRAINING_DAY",
+            workoutOptions: JSON.stringify([
+              "Hot Pilates",
+              "Strength Workout",
+              "Outdoor Running",
+              "Yoga & Mobility Flow",
+            ]),
+            sleepRecommendation: "Target 8 Jam • Tidur sebelum 22:30 WIB",
+            dayNotifications: JSON.stringify([
+              { time: "07:00", label: "Pagi • Movement Ritual", message: "Day 3 Thoracic Opening terbuka! Luangkan 25 menit sesi latihan & upload foto before-after." },
+              { time: "12:30", label: "Siang • Clean Nourishment", message: "Waktunya santap siang mindful. Cek menu Mediterranean bowl & catat kepatuhan makan Anda." },
+              { time: "20:30", label: "Malam • Dear Diary & Cutoff", message: "Tuliskan Dear Diary hari ini, beri happiness rate, dan isi jam tidur sebelum 23:59." }
+            ]),
             videoUrl: "https://www.youtube.com/watch?v=sTANio_2E0Q",
             videoChecklist: JSON.stringify([
               "Wall angels scapular glide (3 sets x 10 reps)",
@@ -140,6 +173,11 @@ async function main() {
             dayNumber: 4,
             title: "Active Cellular Regeneration & Fascial Release",
             dayType: "REST_DAY",
+            sleepRecommendation: "Target 8.5 Jam • Deep Rest & Sleep Restoration",
+            dayNotifications: JSON.stringify([
+              { time: "08:00", label: "Pagi • Active Restoration", message: "Hari ini adalah Rest Day. Luangkan waktu jalan santai 25 menit & hidrasi mineral tercukupi." },
+              { time: "20:30", label: "Malam • Recovery Diary & Sleep", message: "Evaluasi pemulihan tubuh Anda di Dear Diary & siapkan jam tidur optimal malam ini." }
+            ]),
             restInstructions:
               "Take a 25-minute unhurried outdoor walk in natural light, perform 10 minutes of gentle foam rolling or plantar fascia ball release, and practice 4-7-8 parasympathetic breathing before sleep.",
             mealRecommendation:
@@ -154,7 +192,13 @@ async function main() {
           {
             dayNumber: 5,
             title: "On-Site Cohort Immersion & Posture Clinic",
-            dayType: "MEETUP_DAY",
+            dayType: "CONNECTION_DAY",
+            sleepRecommendation: "Target 8 Jam • Siap untuk Sesi Tatap Muka",
+            dayNotifications: JSON.stringify([
+              { time: "08:30", label: "Pagi • Live Studio / Zoom Circle", message: "Live Circle dimulai hari ini. Cek venue studio Senopati atau tautan Zoom di dashboard Anda." },
+              { time: "13:00", label: "Siang • Community Reflection", message: "Terima kasih telah bergabung di Live Circle! Luangkan waktu untuk makan mindful & catat kepatuhan makan." },
+              { time: "20:30", label: "Malam • Gratitude & Sleep Track", message: "Tuliskan refleksi koneksi hari ini di Dear Diary & catat target jam tidur Anda." }
+            ]),
             meetupLink: "https://meet.google.com/wellness-weekly-sync",
             onsiteVenue: "The Sanctuary Wellness Pavilion, Senopati, South Jakarta (Hybrid Live Stream Available)",
             onsiteSchedule: "08:30 – 10:30 WIB • Mat & Organic Refreshments Provided",
@@ -196,6 +240,7 @@ async function main() {
       startDate: prog2Start,
       endDate: prog2End,
       isPublished: true,
+      status: "ACTIVE",
       days: {
         create: [
           {
@@ -257,13 +302,20 @@ async function main() {
       registrationDeadline: prog3Deadline,
       startDate: prog3Start,
       endDate: prog3End,
-      isPublished: false, // In DRAFT mode (2 of 7 days filled)
+      isPublished: false,
+      status: "COMING_SOON",
+      registrationOpenDate: null, // TBA
       days: {
         create: [
           {
             dayNumber: 1,
             title: "Evening Cadence & Box Breathing Foundation",
             dayType: "TRAINING_DAY",
+            dayNotifications: JSON.stringify([
+              { time: "07:00", label: "Pagi • Movement Ritual", message: "Sesi nafas pagi telah terbuka. Siapkan 15 menit untuk latihan box breathing." },
+              { time: "12:30", label: "Siang • Clean Nourishment", message: "Perhatikan asupan hidrasi herbal dan hindari kafein berlebih siang ini." },
+              { time: "20:30", label: "Malam • Dear Diary & Sleep", message: "Catat evaluasi stres dan target tidur malam di Dear Diary sebelum 23:59." }
+            ]),
             videoUrl: "https://www.youtube.com/watch?v=sTANio_2E0Q",
             videoChecklist: JSON.stringify([
               "Dim overhead lights 90 minutes before sleep",
@@ -282,6 +334,10 @@ async function main() {
             dayNumber: 2,
             title: "Digital Sunset & Parasympathetic Unwind",
             dayType: "REST_DAY",
+            dayNotifications: JSON.stringify([
+              { time: "08:00", label: "Pagi • Active Restoration", message: "Hari ini fokus dekompresi sistem saraf. Nikmati jalan pagi tanpa layar ponsel." },
+              { time: "20:30", label: "Malam • Recovery Diary & Sleep", message: "Matikan gadget 60 menit sebelum tidur & catat refleksi harian Anda." }
+            ]),
             restInstructions:
               "Put all screens away 60 minutes before bed and practice 10 minutes of gentle supine spinal decompression.",
             mealRecommendation:
@@ -298,7 +354,27 @@ async function main() {
     },
   });
 
-  console.log("✅ Seeded programs:", programYoga.title, ",", programNutrition.title, "& Draft:", programDraft.title);
+  // 6C. Create Program 4: Internal Draft (NOT_SHOW - strictly hidden from public and user dashboard)
+  const programInternal = await prisma.program.create({
+    data: {
+      title: "30-Day Longevity & Cellular Rejuvenation (Internal Prototype)",
+      slug: "longevity-cellular-rejuvenation-prototype",
+      description:
+        "Internal development protocol for advanced cellular rejuvenation, sauna protocols, and cold water immersion.",
+      recommendedFor: "Internal R&D / Faculty Only",
+      coachName: "Elena Rostova",
+      durationDays: 30,
+      price: 999000,
+      maxQuota: 10,
+      startDate: new Date(todayStart.getTime() + 30 * 24 * 60 * 60 * 1000),
+      endDate: new Date(todayStart.getTime() + 60 * 24 * 60 * 60 * 1000),
+      isPublished: false,
+      status: "NOT_SHOW",
+      registrationOpenDate: null,
+    },
+  });
+
+  console.log("✅ Seeded programs:", programYoga.title, ",", programNutrition.title, ",", programDraft.title, "& Internal:", programInternal.title);
 
   // 7. Enroll Budi into Program 1 (ACTIVE access)
   const paidAt = new Date(prog1StartDate.getTime() - 24 * 60 * 60 * 1000);
@@ -326,6 +402,16 @@ async function main() {
         programDayId: day1.id,
         videoWatched: true,
         isCompleted: true,
+        selectedWorkout: "Hot Pilates",
+        photoBeforeUrl: "/test.jpg",
+        photoAfterUrl: "/pic.jpg",
+        mealCompliance: "FULL",
+        mealNotes: "Mengikuti menu sarapan oatmeal chia dan salmon kukus dengan sempurna.",
+        dailyReflection: "Hari pertama terasa luar biasa! Punggung bawah jauh lebih ringan setelah sesi flow pagi.",
+        happinessRate: 5,
+        bedtime: "22:30",
+        wakeTime: "06:15",
+        sleepDurationMinutes: 465,
         checklistCompleted: JSON.stringify([
           "5 min diaphragmatic breathing & posture check",
           "10 min spinal wave & cat-cow flow",

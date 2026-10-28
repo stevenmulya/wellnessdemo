@@ -176,12 +176,12 @@ export function AuthModal({
         {/* Top Header Row with Switcher & Close Button */}
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-zinc-200/70 dark:border-white/10">
           <div className="space-y-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-orange-600 dark:text-orange-400 block">
-              Wellness Sanctuary
+            <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 block font-mono">
+              BMS Sanctuary
             </span>
-            <h2 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900 dark:text-white font-geometric">
               {tab === "signup"
-                ? "Create Account"
+                ? "Create Sanctuary Profile"
                 : tab === "signin"
                 ? "Welcome Back"
                 : "Reset Password"}
@@ -235,12 +235,12 @@ export function AuthModal({
         )}
 
         {successMsg && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs leading-relaxed">
+          <div className="mb-5 p-3.5 rounded-2xl bg-zinc-900/10 dark:bg-white/10 border border-zinc-900/20 dark:border-white/20 text-zinc-900 dark:text-zinc-100 text-xs leading-relaxed font-mono">
             <p>{successMsg}</p>
             {devResetUrl && (
               <a
                 href={devResetUrl}
-                className="underline font-semibold text-emerald-700 dark:text-emerald-300 block mt-1.5"
+                className="underline font-semibold text-zinc-900 dark:text-white block mt-1.5"
               >
                 Open password reset link &rarr;
               </a>
@@ -258,7 +258,7 @@ export function AuthModal({
                   className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
                     signUpStep === 1
                       ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                      : "bg-emerald-600 text-white"
+                      : "bg-zinc-700 text-white dark:bg-zinc-300 dark:text-zinc-900"
                   }`}
                 >
                   {signUpStep === 2 ? <Check className="w-3 h-3 stroke-[3]" /> : "1"}
@@ -436,7 +436,7 @@ export function AuthModal({
                 <button
                   type="button"
                   onClick={() => switchTab("forgot")}
-                  className="text-xs text-orange-600 dark:text-orange-400 hover:underline"
+                  className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:underline font-mono"
                 >
                   Forgot password?
                 </button>

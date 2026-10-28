@@ -13,8 +13,15 @@ export default async function AdminPage() {
     redirect("/?auth=signin&target=admin");
   }
 
-  // Optimized parallel queries: Fetch users, program hierarchy, and aggregated subscriber statistics
-  const [users, programsData, enrollmentStats] = await Promise.all([
+  // Optimized parallel queries: Fetch users, program hierarchy, master data, and aggregated subscriber statistics
+  const [
+    users,
+    programsData,
+    enrollmentStats,
+    masterCoaches,
+    masterTargetAudiences,
+    masterCategories,
+  ] = await Promise.all([
     prisma.user.findMany({
       select: {
         id: true,
@@ -56,6 +63,9 @@ export default async function AdminPage() {
       by: ["programId", "status"],
       _count: { id: true },
     }),
+    prisma.masterCoach.findMany({ orderBy: { name: "asc" } }),
+    prisma.masterTargetAudience.findMany({ orderBy: { name: "asc" } }),
+    prisma.masterCategory.findMany({ orderBy: { name: "asc" } }),
   ]);
 
   // Build O(1) subscriber count lookup map from SQL group-by
@@ -76,9 +86,13 @@ export default async function AdminPage() {
     title: p.title,
     slug: p.slug,
     description: p.description,
+    category: p.category || "Pilates",
     recommendedFor: p.recommendedFor,
     coachName: p.coachName,
+    coachTitle: p.coachTitle || null,
     durationDays: p.durationDays,
+    actualPrice: p.actualPrice,
+    discountPercentage: p.discountPercentage,
     price: p.price,
     maxQuota: p.maxQuota,
     locationType: p.locationType,
@@ -88,7 +102,9 @@ export default async function AdminPage() {
     communityLink: p.communityLink,
     startDate: p.startDate,
     endDate: p.endDate,
+    registrationOpenDate: p.registrationOpenDate,
     registrationDeadline: p.registrationDeadline,
+    status: ((p.status as "NOT_SHOW" | "COMING_SOON" | "ACTIVE" | "DRAFT" | "PUBLISHED") || (p.isPublished ? "PUBLISHED" : "DRAFT")),
     isPublished: p.isPublished,
     dayCount: p.days.length,
     activeSubscribers: statsMap[p.id]?.active || 0,
@@ -98,6 +114,9 @@ export default async function AdminPage() {
       dayNumber: d.dayNumber,
       title: d.title,
       dayType: d.dayType,
+      workoutOptions: safeJsonParse<string[]>(d.workoutOptions, []),
+      sleepRecommendation: d.sleepRecommendation,
+      dayNotifications: safeJsonParse<Array<{ time: string; message: string; label?: string }>>(d.dayNotifications, []),
       videoUrl: d.videoUrl,
       videoChecklist: safeJsonParse<string[]>(d.videoChecklist, []),
       mealRecommendation: d.mealRecommendation,
@@ -117,6 +136,11 @@ export default async function AdminPage() {
     <AdminClient
       initialUsers={users}
       initialPrograms={programs}
+      initialMasterData={{
+        coaches: masterCoaches,
+        targetAudiences: masterTargetAudiences,
+        categories: masterCategories,
+      }}
       currentAdminId={session.userId}
     />
   );

@@ -71,3 +71,40 @@ export function isRegistrationClosedInWib(
   const deadlineUtcMs = Date.UTC(year, month, date, 23, 59, 59, 999) - WIB_OFFSET_MS;
   return nowUtc.getTime() > deadlineUtcMs;
 }
+
+export interface SleepCalculationResult {
+  hours: number;
+  minutes: number;
+  totalMinutes: number;
+  formatted: string;
+}
+
+/**
+ * Calculates sleep duration across midnight boundary (e.g. Bed: 23:00, Wake: 06:30 -> 7h 30m).
+ */
+export function calculateSleepDuration(
+  bedtime?: string | null,
+  wakeTime?: string | null
+): SleepCalculationResult | null {
+  if (!bedtime || !wakeTime) return null;
+
+  const [bH, bM] = bedtime.split(":").map(Number);
+  const [wH, wM] = wakeTime.split(":").map(Number);
+
+  if (isNaN(bH) || isNaN(bM) || isNaN(wH) || isNaN(wM)) return null;
+
+  const bedMinutes = bH * 60 + bM;
+  const wakeMinutes = wH * 60 + wM;
+
+  // Formula handles cross-midnight seamlessly: (wake - bed + 1440) % 1440
+  const totalMinutes = (wakeMinutes + 1440 - bedMinutes) % 1440;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return {
+    hours,
+    minutes,
+    totalMinutes,
+    formatted: minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`,
+  };
+}

@@ -39,7 +39,9 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
     }),
     prisma.program.findMany({
-      where: { isPublished: true },
+      where: {
+        status: { in: ["ACTIVE", "COMING_SOON"] },
+      },
       include: {
         _count: {
           select: {
@@ -110,8 +112,10 @@ export default async function DashboardPage() {
       virtualFallbackAvailable: p.virtualFallbackAvailable,
       enrolledCount: p._count.enrollments,
       communityLink: p.communityLink,
+      status: p.status || (p.isPublished ? "ACTIVE" : "COMING_SOON"),
       startDate: p.startDate,
       endDate: p.endDate,
+      registrationOpenDate: p.registrationOpenDate,
       registrationDeadline: p.registrationDeadline,
       dayCount: p.days.length,
       days: p.days.map((d) => {
@@ -151,6 +155,15 @@ export default async function DashboardPage() {
           dayNumber: d.dayNumber,
           title: d.title,
           dayType: d.dayType,
+          workoutOptions: safeJsonParse<string[]>(d.workoutOptions, [
+            "Hot Pilates",
+            "Strength Workout",
+            "Outdoor Running",
+            "Yoga & Mobility Flow",
+            "Cardio / HIIT",
+          ]),
+          sleepRecommendation: d.sleepRecommendation || "Target 8 Hours • Wind down before 22:30 WIB",
+          dayNotifications: safeJsonParse<Array<{ time: string; message: string; label?: string }>>(d.dayNotifications, []),
           unlockDate: unlockDate.toISOString(),
           isCalendarUnlocked,
           isPast2359,
@@ -162,6 +175,10 @@ export default async function DashboardPage() {
           pendingReminder: d.pendingReminder,
           completedReminder: d.completedReminder,
           meetupLink: canAccessMedia ? d.meetupLink : null,
+          mapLink: d.mapLink,
+          eventTitle: d.eventTitle,
+          eventHost: d.eventHost,
+          eventDetails: d.eventDetails,
           onsiteVenue: d.onsiteVenue,
           onsiteSchedule: d.onsiteSchedule,
           restInstructions: d.restInstructions,
@@ -173,6 +190,18 @@ export default async function DashboardPage() {
                 videoWatched: progRecord.videoWatched,
                 isCompleted: isFullyCompleted,
                 checklistCompleted: progRecord.checklistCompleted,
+                selectedWorkout: progRecord.selectedWorkout,
+                photoBeforeUrl: progRecord.photoBeforeUrl,
+                photoAfterUrl: progRecord.photoAfterUrl,
+                workoutNotes: progRecord.workoutNotes,
+                eventFeedback: progRecord.eventFeedback,
+                mealCompliance: progRecord.mealCompliance,
+                mealNotes: progRecord.mealNotes,
+                dailyReflection: progRecord.dailyReflection,
+                happinessRate: progRecord.happinessRate,
+                bedtime: progRecord.bedtime,
+                wakeTime: progRecord.wakeTime,
+                sleepDurationMinutes: progRecord.sleepDurationMinutes,
                 assessmentResponse: progRecord.assessmentResponse,
               }
             : null,

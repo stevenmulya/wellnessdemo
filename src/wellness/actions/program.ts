@@ -11,7 +11,7 @@ import {
 } from "../validators/program";
 import { WellnessActionResult } from "./auth";
 import { safeJsonParse } from "../utils/json";
-import { getProgramDayWibWindow } from "../utils/timezone";
+import { getProgramDayWibWindow, calculateSleepDuration } from "../utils/timezone";
 
 /**
  * Superadmin: Create a new Cohort Program in DRAFT state (`isPublished: false`).
@@ -35,9 +35,13 @@ export async function wellnessAdminCreateProgram(
   const {
     title,
     description,
+    category,
     recommendedFor,
     coachName,
+    coachTitle,
     durationDays,
+    actualPrice,
+    discountPercentage,
     price,
     maxQuota,
     communityLink,
@@ -47,7 +51,9 @@ export async function wellnessAdminCreateProgram(
     virtualFallbackAvailable,
     startDate,
     endDate,
+    registrationOpenDate,
     registrationDeadline,
+    status,
     days,
   } = validation.data;
 
@@ -59,25 +65,46 @@ export async function wellnessAdminCreateProgram(
   const randomSuffix = Math.floor(1000 + Math.random() * 9000);
   const slug = `${baseSlug}-${randomSuffix}`;
 
+  const startD = new Date(startDate);
+  const endD = new Date(endDate);
+  const calculatedDays = Math.max(
+    1,
+    Math.round((endD.getTime() - startD.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  );
+  const resolvedDuration = durationDays || calculatedDays;
+
+  const resolvedActualPrice = actualPrice !== undefined ? Number(actualPrice) : (Number(price) || 0);
+  const resolvedDiscount = discountPercentage !== undefined ? Number(discountPercentage) : 0;
+  const resolvedFinalPrice = Math.max(
+    0,
+    Math.round(resolvedActualPrice * (1 - resolvedDiscount / 100))
+  );
+
   const newProgram = await prisma.program.create({
     data: {
-      title,
+      title: title.trim(),
       slug,
-      description,
-      recommendedFor: recommendedFor || "All Levels • Mindful Movement & Longevity",
-      coachName,
-      durationDays: durationDays || 21,
-      price,
+      description: description.trim(),
+      category: category?.trim() || "Pilates",
+      recommendedFor: recommendedFor?.trim() || "All Levels",
+      coachName: coachName.trim(),
+      coachTitle: coachTitle?.trim() || null,
+      durationDays: resolvedDuration,
+      actualPrice: resolvedActualPrice,
+      discountPercentage: resolvedDiscount,
+      price: resolvedFinalPrice,
       maxQuota: maxQuota || 50,
-      communityLink: communityLink || null,
+      communityLink: communityLink?.trim() || null,
       locationType: locationType || "ONLINE",
       city: city?.trim() || null,
       venueAddress: venueAddress?.trim() || null,
       virtualFallbackAvailable: virtualFallbackAvailable ?? true,
-      startDate: new Date(startDate),
-      endDate: new Date(endDate),
+      startDate: startD,
+      endDate: endD,
+      registrationOpenDate: registrationOpenDate ? new Date(registrationOpenDate) : null,
       registrationDeadline: new Date(registrationDeadline),
-      isPublished: false, // Always enters DRAFT first until all days are populated & launched
+      status: "DRAFT",
+      isPublished: false,
       days:
         days && days.length > 0
           ? {
@@ -85,6 +112,9 @@ export async function wellnessAdminCreateProgram(
                 dayNumber: d.dayNumber,
                 title: d.title,
                 dayType: d.dayType,
+                workoutOptions: JSON.stringify(d.workoutOptions || []),
+                sleepRecommendation: d.sleepRecommendation || null,
+                dayNotifications: JSON.stringify(d.dayNotifications || []),
                 videoUrl: d.videoUrl || null,
                 videoChecklist: JSON.stringify(d.videoChecklist || []),
                 mealRecommendation: d.mealRecommendation || null,
@@ -152,14 +182,17 @@ export async function wellnessAdminSaveProgramDay(
       restInstructions: d.restInstructions,
       onsiteVenue: d.onsiteVenue,
       onsiteSchedule: d.onsiteSchedule,
+      meetupLink: d.meetupLink,
+      eventTitle: d.eventTitle,
+      mapLink: d.mapLink,
     })
   ) {
     const hint =
       d.dayType === "TRAINING_DAY"
-        ? "Workout Day requires a title and at least a Video URL or 1 Checklist item."
+        ? "Training Day requires a title and at least a Video URL or 1 Checklist item."
         : d.dayType === "REST_DAY"
         ? "Rest Day requires a title and Rest Day Instructions."
-        : "On-Site Day requires a title and Venue Location or Session Schedule.";
+        : "Connect Day requires a title and Event Title, Venue, or Session Schedule.";
     return {
       success: false,
       message: hint,
@@ -178,6 +211,9 @@ export async function wellnessAdminSaveProgramDay(
       dayNumber: d.dayNumber,
       title: d.title.trim(),
       dayType: d.dayType,
+      workoutOptions: JSON.stringify(d.workoutOptions || []),
+      sleepRecommendation: d.sleepRecommendation?.trim() || null,
+      dayNotifications: JSON.stringify(d.dayNotifications || []),
       videoUrl: d.videoUrl?.trim() || null,
       videoChecklist: JSON.stringify(d.videoChecklist || []),
       mealRecommendation: d.mealRecommendation?.trim() || null,
@@ -189,8 +225,12 @@ export async function wellnessAdminSaveProgramDay(
         d.completedReminder?.trim() ||
         `Day ${d.dayNumber} completed! Great consistency.`,
       meetupLink: d.meetupLink?.trim() || null,
+      mapLink: d.mapLink?.trim() || null,
       onsiteVenue: d.onsiteVenue?.trim() || null,
       onsiteSchedule: d.onsiteSchedule?.trim() || null,
+      eventTitle: d.eventTitle?.trim() || null,
+      eventHost: d.eventHost?.trim() || null,
+      eventDetails: d.eventDetails?.trim() || null,
       restInstructions: d.restInstructions?.trim() || null,
       coachName: d.dayType === "REST_DAY" ? null : (d.coachName?.trim() || null),
       recommendedFor: d.dayType === "REST_DAY" ? null : (d.recommendedFor?.trim() || null),
@@ -198,6 +238,9 @@ export async function wellnessAdminSaveProgramDay(
     update: {
       title: d.title.trim(),
       dayType: d.dayType,
+      workoutOptions: JSON.stringify(d.workoutOptions || []),
+      sleepRecommendation: d.sleepRecommendation?.trim() || null,
+      dayNotifications: JSON.stringify(d.dayNotifications || []),
       videoUrl: d.videoUrl?.trim() || null,
       videoChecklist: JSON.stringify(d.videoChecklist || []),
       mealRecommendation: d.mealRecommendation?.trim() || null,
@@ -209,8 +252,12 @@ export async function wellnessAdminSaveProgramDay(
         d.completedReminder?.trim() ||
         `Day ${d.dayNumber} completed! Great consistency.`,
       meetupLink: d.meetupLink?.trim() || null,
+      mapLink: d.mapLink?.trim() || null,
       onsiteVenue: d.onsiteVenue?.trim() || null,
       onsiteSchedule: d.onsiteSchedule?.trim() || null,
+      eventTitle: d.eventTitle?.trim() || null,
+      eventHost: d.eventHost?.trim() || null,
+      eventDetails: d.eventDetails?.trim() || null,
       restInstructions: d.restInstructions?.trim() || null,
       coachName: d.dayType === "REST_DAY" ? null : (d.coachName?.trim() || null),
       recommendedFor: d.dayType === "REST_DAY" ? null : (d.recommendedFor?.trim() || null),
@@ -222,7 +269,9 @@ export async function wellnessAdminSaveProgramDay(
     message: `Day ${savedDay.dayNumber} ("${savedDay.title}") saved.`,
     data: {
       ...savedDay,
+      workoutOptions: safeJsonParse<string[]>(savedDay.workoutOptions, []),
       videoChecklist: safeJsonParse<string[]>(savedDay.videoChecklist, []),
+      dayNotifications: safeJsonParse<any[]>(savedDay.dayNotifications, []),
     },
   };
 }
@@ -309,28 +358,43 @@ export async function wellnessAdminUpdateProgramMeta(
     };
   }
 
-  // Check if all target 1..durationDays are still complete
-  let allDaysReady = true;
-  for (let dNum = 1; dNum <= input.durationDays; dNum++) {
-    const dayObj = existingProgram.days.find((d) => d.dayNumber === dNum);
-    if (!isProgramDayComplete(dayObj)) {
-      allDaysReady = false;
-      break;
-    }
+  // If duration is reduced, delete truncated excess days (e.g. Day 7, 6, 5 when reduced to 3)
+  if (input.durationDays < existingProgram.durationDays) {
+    await prisma.programDay.deleteMany({
+      where: {
+        programId: input.programId,
+        dayNumber: { gt: input.durationDays },
+      },
+    });
   }
 
-  const nextIsPublished = existingProgram.isPublished && allDaysReady;
+  const resolvedActualPrice =
+    input.actualPrice !== undefined
+      ? Number(input.actualPrice)
+      : existingProgram.actualPrice;
+  const resolvedDiscount =
+    input.discountPercentage !== undefined
+      ? Number(input.discountPercentage)
+      : existingProgram.discountPercentage;
+  const resolvedFinalPrice = Math.max(
+    0,
+    Math.round(resolvedActualPrice * (1 - resolvedDiscount / 100))
+  );
 
   const updated = await prisma.program.update({
     where: { id: input.programId },
     data: {
       title: input.title.trim(),
       description: input.description.trim(),
+      category: input.category?.trim() || existingProgram.category || "Pilates",
       recommendedFor: input.recommendedFor.trim(),
       coachName: input.coachName.trim(),
+      coachTitle: input.coachTitle?.trim() || null,
       durationDays: input.durationDays,
+      actualPrice: resolvedActualPrice,
+      discountPercentage: resolvedDiscount,
+      price: resolvedFinalPrice,
       maxQuota: Math.max(1, Number(input.maxQuota) || 50),
-      price: Math.max(0, Number(input.price) || 0),
       communityLink: input.communityLink?.trim() || null,
       locationType: input.locationType || "ONLINE",
       city: input.city?.trim() || null,
@@ -338,8 +402,9 @@ export async function wellnessAdminUpdateProgramMeta(
       virtualFallbackAvailable: input.virtualFallbackAvailable ?? true,
       startDate: new Date(input.startDate),
       endDate: new Date(input.endDate),
+      registrationOpenDate: input.registrationOpenDate ? new Date(input.registrationOpenDate) : null,
       registrationDeadline: new Date(input.registrationDeadline),
-      isPublished: nextIsPublished,
+      status: input.status ?? existingProgram.status,
     },
   });
 
@@ -351,29 +416,28 @@ export async function wellnessAdminUpdateProgramMeta(
 }
 
 /**
- * Superadmin: Submit Final & Launch Program (`isPublished: true`) or revert to Draft (`isPublished: false`).
- * Strictly verifies that every day from Day 1 to Day `durationDays` is filled before allowing launch!
+ * Superadmin: Set program status directly:
+ * - "NOT_SHOW" (Disembunyikan dari public & user catalog)
+ * - "COMING_SOON" (Tampil dengan label Coming Soon, tanggal buka pendaftaran / TBA, belum bisa beli)
+ * - "ACTIVE" (Aktif, pendaftaran terbuka dan bisa di-enroll)
  */
-export async function wellnessAdminTogglePublishProgram(
+export async function wellnessAdminSetProgramStatus(
   programId: string,
-  publish: boolean
-): Promise<WellnessActionResult<{ isPublished: boolean }>> {
+  status: "NOT_SHOW" | "COMING_SOON" | "ACTIVE"
+): Promise<WellnessActionResult<{ status: string; isPublished: boolean }>> {
   await requireSuperadmin();
 
   const program = await prisma.program.findUnique({
     where: { id: programId },
-    include: {
-      days: {
-        orderBy: { dayNumber: "asc" },
-      },
-    },
+    include: { days: { orderBy: { dayNumber: "asc" } } },
   });
 
   if (!program) {
     return { success: false, message: "Program not found." };
   }
 
-  if (publish) {
+  // Jika diubah ke ACTIVE, pastikan seluruh hari dari Day 1 hingga Day durationDays telah lengkap
+  if (status === "ACTIVE") {
     const missingDays: number[] = [];
     for (let i = 1; i <= program.durationDays; i++) {
       const dayRecord = program.days.find((d) => d.dayNumber === i);
@@ -389,22 +453,72 @@ export async function wellnessAdminTogglePublishProgram(
           : `Day ${missingDays.join(", Day ")}`;
       return {
         success: false,
-        message: `Cannot launch yet! All ${program.durationDays} days must be filled first. Incomplete: ${previewMissing}.`,
+        message: `Tidak dapat mengaktifkan program! Semua ${program.durationDays} hari harus lengkap terlebih dahulu. Belum lengkap: ${previewMissing}. Anda bisa memilih 'Coming Soon' jika masih on progress.`,
       };
     }
   }
 
+  const isPublished = status !== "NOT_SHOW";
+
   const updated = await prisma.program.update({
     where: { id: programId },
-    data: { isPublished: publish },
+    data: {
+      status,
+      isPublished,
+    },
+  });
+
+  const label =
+    status === "ACTIVE"
+      ? "Aktif (Pendaftaran Dibuka)"
+      : status === "COMING_SOON"
+      ? "Coming Soon (Segera Hadir)"
+      : "Not Show (Disembunyikan / Draft)";
+
+  return {
+    success: true,
+    message: `Status program "${updated.title}" diubah menjadi: ${label}.`,
+    data: { status: updated.status, isPublished: updated.isPublished },
+  };
+}
+
+/**
+ * Superadmin: Submit Final & Launch Program (`isPublished: true`) or revert to Draft (`isPublished: false`).
+ * Strictly verifies that every day from Day 1 to Day `durationDays` is filled before allowing launch!
+ */
+export async function wellnessAdminTogglePublishProgram(
+  programId: string,
+  publish: boolean
+): Promise<WellnessActionResult<{ isPublished: boolean; status: string }>> {
+  await requireSuperadmin();
+
+  const program = await prisma.program.findUnique({
+    where: { id: programId },
+    include: {
+      days: {
+        orderBy: { dayNumber: "asc" },
+      },
+    },
+  });
+
+  if (!program) {
+    return { success: false, message: "Program not found." };
+  }
+
+  const updated = await prisma.program.update({
+    where: { id: programId },
+    data: {
+      isPublished: publish,
+      status: publish ? "PUBLISHED" : "DRAFT",
+    },
   });
 
   return {
     success: true,
     message: publish
-      ? `🎉 "${updated.title}" is now LIVE and open for member enrollment!`
-      : `"${updated.title}" has been moved back to Draft mode.`,
-    data: { isPublished: updated.isPublished },
+      ? `Cohort "${updated.title}" is now PUBLISHED and live on the portal!`
+      : `Cohort "${updated.title}" is now UNPUBLISHED (reverted to Draft).`,
+    data: { isPublished: updated.isPublished, status: updated.status },
   };
 }
 
@@ -457,6 +571,18 @@ export async function wellnessUserSubmitDayProgress(
     videoWatched,
     isCompleted,
     checklistCompleted,
+    selectedWorkout,
+    photoBeforeUrl,
+    photoAfterUrl,
+    workoutNotes,
+    eventFeedback,
+    mealCompliance,
+    mealNotes,
+    dailyReflection,
+    happinessRate,
+    bedtime,
+    wakeTime,
+    sleepDurationMinutes,
     assessmentResponse,
   } = validation.data;
 
@@ -508,7 +634,7 @@ export async function wellnessUserSubmitDayProgress(
     };
   }
 
-  // Check existing progress to preserve videoWatched if not explicitly passed
+  // Check existing progress to preserve previous values if not explicitly passed
   const existingProgress = await prisma.dayProgress.findUnique({
     where: {
       userId_programDayId: {
@@ -523,40 +649,58 @@ export async function wellnessUserSubmitDayProgress(
       ? videoWatched
       : existingProgress?.videoWatched ?? false;
 
-  // Enforce Training Day completion rules (video + all checklist items)
+  // Compute sleep duration if bedtime and wakeTime are provided
+  const finalBedtime = bedtime !== undefined ? bedtime : existingProgress?.bedtime || null;
+  const finalWakeTime = wakeTime !== undefined ? wakeTime : existingProgress?.wakeTime || null;
+  let finalSleepMinutes = sleepDurationMinutes;
+  if (finalSleepMinutes === undefined && finalBedtime && finalWakeTime) {
+    const calc = calculateSleepDuration(finalBedtime, finalWakeTime);
+    finalSleepMinutes = calc ? calc.totalMinutes : null;
+  }
+
+  // Enforce Training Day completion rules (checklist items complete)
   let verifiedCompleted = isCompleted;
-  if (isCompleted && programDay.dayType === "TRAINING_DAY") {
+  if (programDay.dayType === "TRAINING_DAY") {
     const requiredTasks: string[] = safeJsonParse<string[]>(programDay.videoChecklist, []);
-    const hasVideoRequirement = !!programDay.videoUrl && programDay.videoUrl.trim().length > 0;
     const allTasksChecked =
       requiredTasks.length === 0 ||
       requiredTasks.every((t) => checklistCompleted.includes(t));
 
-    if ((hasVideoRequirement && !nextVideoWatched) || !allTasksChecked) {
+    if (!allTasksChecked) {
       verifiedCompleted = false;
     }
   }
 
+  const payloadData = {
+    videoWatched: nextVideoWatched,
+    isCompleted: verifiedCompleted,
+    checklistCompleted: JSON.stringify(checklistCompleted),
+    selectedWorkout: selectedWorkout !== undefined ? (selectedWorkout || null) : existingProgress?.selectedWorkout,
+    photoBeforeUrl: photoBeforeUrl !== undefined ? (photoBeforeUrl || null) : existingProgress?.photoBeforeUrl,
+    photoAfterUrl: photoAfterUrl !== undefined ? (photoAfterUrl || null) : existingProgress?.photoAfterUrl,
+    workoutNotes: workoutNotes !== undefined ? (workoutNotes || null) : (existingProgress as any)?.workoutNotes,
+    eventFeedback: eventFeedback !== undefined ? (eventFeedback || null) : (existingProgress as any)?.eventFeedback,
+    mealCompliance: mealCompliance !== undefined ? (mealCompliance || null) : existingProgress?.mealCompliance,
+    mealNotes: mealNotes !== undefined ? (mealNotes || null) : existingProgress?.mealNotes,
+    dailyReflection: dailyReflection !== undefined ? (dailyReflection || null) : existingProgress?.dailyReflection,
+    happinessRate: happinessRate !== undefined ? happinessRate : existingProgress?.happinessRate,
+    bedtime: finalBedtime,
+    wakeTime: finalWakeTime,
+    sleepDurationMinutes: finalSleepMinutes,
+    assessmentResponse: assessmentResponse !== undefined ? (assessmentResponse || null) : existingProgress?.assessmentResponse,
+    completedAt: verifiedCompleted ? new Date() : (isCompleted ? existingProgress?.completedAt : null),
+  };
+
   const progress = existingProgress
     ? await prisma.dayProgress.update({
         where: { id: existingProgress.id },
-        data: {
-          videoWatched: nextVideoWatched,
-          isCompleted: verifiedCompleted,
-          checklistCompleted: JSON.stringify(checklistCompleted),
-          assessmentResponse: assessmentResponse || null,
-          completedAt: verifiedCompleted ? new Date() : null,
-        },
+        data: payloadData,
       })
     : await prisma.dayProgress.create({
         data: {
           userId: session.userId,
           programDayId,
-          videoWatched: nextVideoWatched,
-          isCompleted: verifiedCompleted,
-          checklistCompleted: JSON.stringify(checklistCompleted),
-          assessmentResponse: assessmentResponse || null,
-          completedAt: verifiedCompleted ? new Date() : null,
+          ...payloadData,
         },
       });
 

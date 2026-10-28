@@ -1,9 +1,18 @@
 import { z } from "zod";
 
+export const DayNotificationInputSchema = z.object({
+  time: z.string().min(1, "Waktu notifikasi wajib diisi"), // e.g. "07:00"
+  message: z.string().min(1, "Pesan notifikasi wajib diisi"),
+  label: z.string().optional().or(z.literal("")),
+});
+
 export const ProgramDayInputSchema = z.object({
   dayNumber: z.number().int().positive(),
   title: z.string().min(2, "Day title is required (min. 2 characters)").max(120),
-  dayType: z.enum(["TRAINING_DAY", "REST_DAY", "MEETUP_DAY"]),
+  dayType: z.enum(["TRAINING_DAY", "REST_DAY", "CONNECTION_DAY", "MEETUP_DAY"]),
+  workoutOptions: z.array(z.string()).optional().default([]),
+  sleepRecommendation: z.string().optional().or(z.literal("")),
+  dayNotifications: z.array(DayNotificationInputSchema).optional().default([]),
   videoUrl: z.string().optional().or(z.literal("")),
   videoChecklist: z.array(z.string()).default([]),
   mealRecommendation: z.string().optional().or(z.literal("")),
@@ -11,8 +20,12 @@ export const ProgramDayInputSchema = z.object({
   pendingReminder: z.string().optional().or(z.literal("")),
   completedReminder: z.string().optional().or(z.literal("")),
   meetupLink: z.string().optional().or(z.literal("")),
+  mapLink: z.string().optional().or(z.literal("")),
   onsiteVenue: z.string().optional().or(z.literal("")),
   onsiteSchedule: z.string().optional().or(z.literal("")),
+  eventTitle: z.string().optional().or(z.literal("")),
+  eventHost: z.string().optional().or(z.literal("")),
+  eventDetails: z.string().optional().or(z.literal("")),
   restInstructions: z.string().optional().or(z.literal("")),
   coachName: z.string().optional().or(z.literal("")),
   recommendedFor: z.string().optional().or(z.literal("")),
@@ -26,18 +39,22 @@ export const CreateProgramSchema = z
   .object({
     title: z.string().min(3, "Program title must be at least 3 characters").max(120),
     description: z.string().min(10, "Program description must be at least 10 characters"),
+    category: z.string().default("Pilates"),
     recommendedFor: z
       .string()
-      .min(3, "Recommended audience is required")
+      .min(2, "Recommended audience is required")
       .max(400)
-      .default("All Levels • Mindful Movement & Longevity"),
+      .default("All Levels"),
     coachName: z.string().min(2, "Coach name is required").max(300),
+    coachTitle: z.string().optional().or(z.literal("")),
     durationDays: z
       .number()
       .int()
       .min(1, "Program must be at least 1 day")
       .max(90, "Program cannot exceed 90 days")
       .default(21),
+    actualPrice: z.number().min(0, "Actual price must be 0 or higher").default(0),
+    discountPercentage: z.number().int().min(0).max(100).default(0),
     price: z.number().min(0, "Price must be 0 or higher"),
     maxQuota: z.number().int().min(1, "Quota must be at least 1 participant").default(50),
     communityLink: z.string().optional().or(z.literal("")),
@@ -47,7 +64,10 @@ export const CreateProgramSchema = z
     virtualFallbackAvailable: z.boolean().default(true),
     startDate: z.union([z.string(), z.date()]),
     endDate: z.union([z.string(), z.date()]),
+    registrationOpenDate: z.union([z.string(), z.date()]).optional().nullable(),
     registrationDeadline: z.union([z.string(), z.date()]),
+    status: z.enum(["DRAFT", "PUBLISHED", "NOT_SHOW", "COMING_SOON", "ACTIVE"]).default("DRAFT"),
+    isPublished: z.boolean().default(false),
     days: z.array(ProgramDayInputSchema).optional().default([]),
   })
   .refine((data) => new Date(data.startDate) <= new Date(data.endDate), {
@@ -60,9 +80,13 @@ export const UpdateProgramMetaSchema = z
     programId: z.string().min(1, "Program ID is required"),
     title: z.string().min(3, "Program title must be at least 3 characters").max(120),
     description: z.string().min(10, "Program description must be at least 10 characters"),
-    recommendedFor: z.string().min(3, "Recommended audience is required").max(400),
+    category: z.string().default("Pilates"),
+    recommendedFor: z.string().min(2, "Recommended audience is required").max(400),
     coachName: z.string().min(2, "Coach name is required").max(300),
+    coachTitle: z.string().optional().or(z.literal("")),
     durationDays: z.number().int().min(1).max(90),
+    actualPrice: z.number().min(0, "Actual price must be 0 or higher").default(0),
+    discountPercentage: z.number().int().min(0).max(100).default(0),
     price: z.number().min(0, "Price must be 0 or higher"),
     maxQuota: z.number().int().min(1, "Quota must be at least 1 participant"),
     communityLink: z.string().optional().or(z.literal("")),
@@ -72,7 +96,10 @@ export const UpdateProgramMetaSchema = z
     virtualFallbackAvailable: z.boolean().default(true),
     startDate: z.union([z.string(), z.date()]),
     endDate: z.union([z.string(), z.date()]),
+    registrationOpenDate: z.union([z.string(), z.date()]).optional().nullable(),
     registrationDeadline: z.union([z.string(), z.date()]),
+    status: z.enum(["DRAFT", "PUBLISHED", "NOT_SHOW", "COMING_SOON", "ACTIVE"]).default("DRAFT"),
+    isPublished: z.boolean().optional(),
   })
   .refine((data) => new Date(data.startDate) <= new Date(data.endDate), {
     message: "End date must be on or after the start date",
@@ -84,6 +111,18 @@ export const SubmitDayProgressSchema = z.object({
   videoWatched: z.boolean().optional(),
   isCompleted: z.boolean(),
   checklistCompleted: z.array(z.string()).default([]),
+  selectedWorkout: z.string().optional().or(z.literal("")),
+  photoBeforeUrl: z.string().optional().or(z.literal("")),
+  photoAfterUrl: z.string().optional().or(z.literal("")),
+  workoutNotes: z.string().optional().or(z.literal("")),
+  eventFeedback: z.string().optional().or(z.literal("")),
+  mealCompliance: z.string().optional().or(z.literal("")),
+  mealNotes: z.string().optional().or(z.literal("")),
+  dailyReflection: z.string().optional().or(z.literal("")),
+  happinessRate: z.number().int().min(1).max(5).optional().nullable(),
+  bedtime: z.string().optional().or(z.literal("")),
+  wakeTime: z.string().optional().or(z.literal("")),
+  sleepDurationMinutes: z.number().int().optional().nullable(),
   assessmentResponse: z.string().optional().or(z.literal("")),
 });
 
@@ -98,6 +137,9 @@ export function isProgramDayComplete(day?: {
   restInstructions?: string | null;
   onsiteVenue?: string | null;
   onsiteSchedule?: string | null;
+  meetupLink?: string | null;
+  eventTitle?: string | null;
+  mapLink?: string | null;
 } | null): boolean {
   if (!day || !day.title || day.title.trim().length < 2) return false;
 
@@ -125,10 +167,13 @@ export function isProgramDayComplete(day?: {
     return !!day.restInstructions && day.restInstructions.trim().length >= 3;
   }
 
-  if (type === "MEETUP_DAY") {
+  if (type === "CONNECTION_DAY" || type === "MEETUP_DAY") {
     return (
+      (!!day.eventTitle && day.eventTitle.trim().length >= 2) ||
       (!!day.onsiteVenue && day.onsiteVenue.trim().length >= 2) ||
-      (!!day.onsiteSchedule && day.onsiteSchedule.trim().length >= 2)
+      (!!day.onsiteSchedule && day.onsiteSchedule.trim().length >= 2) ||
+      (!!day.meetupLink && day.meetupLink.trim().length >= 5) ||
+      (!!day.mapLink && day.mapLink.trim().length >= 5)
     );
   }
 

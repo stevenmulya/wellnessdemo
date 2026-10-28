@@ -8,15 +8,22 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const sessionUser = await getWellnessSession();
 
-  // Optimized parallel queries: Fetch published programs with counts only, and if logged in, targeted user active enrollments
+  // Optimized parallel queries: Fetch published cohorts for the landing page
   const [programs, userEnrollments] = await Promise.all([
     prisma.program.findMany({
-      where: { isPublished: true },
+      where: {
+        isPublished: true,
+      },
       include: {
         _count: {
           select: {
             days: true,
             enrollments: { where: { status: "ACTIVE" } },
+          },
+        },
+        days: {
+          select: {
+            dayType: true,
           },
         },
       },
@@ -32,27 +39,45 @@ export default async function HomePage() {
 
   const userActiveProgramIds = new Set(userEnrollments.map((e) => e.programId));
 
-  const formattedPrograms = programs.map((p) => ({
-    id: p.id,
-    title: p.title,
-    slug: p.slug,
-    description: p.description,
-    recommendedFor: p.recommendedFor,
-    coachName: p.coachName,
-    durationDays: p.durationDays,
-    price: p.price,
-    maxQuota: p.maxQuota,
-    locationType: p.locationType,
-    city: p.city,
-    venueAddress: p.venueAddress,
-    virtualFallbackAvailable: p.virtualFallbackAvailable,
-    enrolledCount: p._count.enrollments,
-    isUserEnrolled: userActiveProgramIds.has(p.id),
-    startDate: p.startDate,
-    endDate: p.endDate,
-    registrationDeadline: p.registrationDeadline,
-    dayCount: p._count.days || p.durationDays,
-  }));
+  const formattedPrograms = programs.map((p) => {
+    const trainingDays =
+      p.days.filter((d) => d.dayType === "TRAINING_DAY").length || p.durationDays;
+    const connectionDays =
+      p.days.filter(
+        (d) => d.dayType === "CONNECTION_DAY" || d.dayType === "MEETUP_DAY"
+      ).length || 2;
+
+    return {
+      id: p.id,
+      title: p.title,
+      slug: p.slug,
+      description: p.description,
+      category: p.category || "Pilates",
+      recommendedFor: p.recommendedFor || "All Levels",
+      coachName: p.coachName,
+      coachTitle: p.coachTitle,
+      durationDays: p.durationDays,
+      trainingDays,
+      connectionDays,
+      actualPrice: p.actualPrice,
+      discountPercentage: p.discountPercentage,
+      price: p.price,
+      maxQuota: p.maxQuota,
+      locationType: p.locationType,
+      city: p.city || "Jakarta",
+      venueAddress: p.venueAddress,
+      virtualFallbackAvailable: p.virtualFallbackAvailable,
+      enrolledCount: p._count.enrollments,
+      isUserEnrolled: userActiveProgramIds.has(p.id),
+      status: p.status,
+      isPublished: p.isPublished,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      registrationOpenDate: p.registrationOpenDate,
+      registrationDeadline: p.registrationDeadline,
+      dayCount: p._count.days || p.durationDays,
+    };
+  });
 
   return (
     <Suspense fallback={<div className="min-h-screen" />}>
