@@ -4591,7 +4591,7 @@ export function AdminClient({
                   className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                 />
                 <p className="text-[11px] text-zinc-400 font-light">
-                  Displayed on the member's Morning Awakening &amp; Evening Wind-down cockpit card.
+                  Displayed on the member&apos;s Morning Awakening &amp; Evening Wind-down cockpit card.
                 </p>
               </div>
 
@@ -4628,7 +4628,7 @@ export function AdminClient({
                           className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs font-mono text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                         />
                         <p className="text-[11px] text-zinc-400 font-light">
-                          Opens directly in member's app with subscriber verification.
+                          Opens directly in member&apos;s app with subscriber verification.
                         </p>
                       </div>
 

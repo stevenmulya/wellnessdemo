@@ -724,6 +724,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
     if (enrollId) {
       handleOpenQrisCheckout(enrollId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const handleEnableNotifications = async () => {
