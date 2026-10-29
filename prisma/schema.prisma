@@ -44,7 +44,11 @@ model Program {
   title                String
   slug                 String        @unique
   description          String
+  coverImage           String?       // Custom banner / poster image URL
+  difficultyLevel      String        @default("INTERMEDIATE") // "BEGINNER" | "MODERATE" | "INTERMEDIATE" | "ADVANCED" | "HIGH_INTENSITY"
   category             String        @default("Pilates") // "Pilates" | "Workout" | "Mobility & Longevity"
+  equipment            String?       // Selected master equipment: e.g. "Yoga Mat, Resistance Bands"
+  dailyCommitment      String?       // Daily time estimation: e.g. "20 - 30 Mins / Day"
   recommendedFor       String        @default("All Levels • Mindful Movement & Longevity")
   coachName            String        @default("Head Wellness Coach")
   coachTitle           String?       @default("Movement & Longevity Specialist")
@@ -93,6 +97,20 @@ model MasterTargetAudience {
 model MasterCategory {
   id        String   @id @default(cuid())
   name      String   @unique // e.g. "Pilates", "Workout", "Mobility & Longevity"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MasterEquipment {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "No Equipment", "Yoga Mat", "Resistance Bands", "Light Dumbbells", "Pilates Ball"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MasterDailyCommitment {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "10 - 15 Mins / Day", "15 - 20 Mins / Day", "20 - 30 Mins / Day"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

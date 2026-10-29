@@ -39,7 +39,13 @@ export const CreateProgramSchema = z
   .object({
     title: z.string().min(3, "Program title must be at least 3 characters").max(120),
     description: z.string().min(10, "Program description must be at least 10 characters"),
+    coverImage: z.string().optional().or(z.literal("")),
+    difficultyLevel: z
+      .enum(["BEGINNER", "MODERATE", "INTERMEDIATE", "ADVANCED", "HIGH_INTENSITY"])
+      .default("INTERMEDIATE"),
     category: z.string().default("Pilates"),
+    equipment: z.string().optional().or(z.literal("")),
+    dailyCommitment: z.string().optional().or(z.literal("")),
     recommendedFor: z
       .string()
       .min(2, "Recommended audience is required")
@@ -80,7 +86,13 @@ export const UpdateProgramMetaSchema = z
     programId: z.string().min(1, "Program ID is required"),
     title: z.string().min(3, "Program title must be at least 3 characters").max(120),
     description: z.string().min(10, "Program description must be at least 10 characters"),
+    coverImage: z.string().optional().or(z.literal("")),
+    difficultyLevel: z
+      .enum(["BEGINNER", "MODERATE", "INTERMEDIATE", "ADVANCED", "HIGH_INTENSITY"])
+      .default("INTERMEDIATE"),
     category: z.string().default("Pilates"),
+    equipment: z.string().optional().or(z.literal("")),
+    dailyCommitment: z.string().optional().or(z.literal("")),
     recommendedFor: z.string().min(2, "Recommended audience is required").max(400),
     coachName: z.string().min(2, "Coach name is required").max(300),
     coachTitle: z.string().optional().or(z.literal("")),

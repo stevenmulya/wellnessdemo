@@ -3,6 +3,7 @@ import { getWellnessSession } from "@/wellness/security/session";
 import { prisma } from "@/wellness/db";
 import { AdminClient } from "@/components/admin/AdminClient";
 import { safeJsonParse } from "@/wellness/utils/json";
+import { wellnessGetMasterData } from "@/wellness/actions/master";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,7 @@ export default async function AdminPage() {
     users,
     programsData,
     enrollmentStats,
-    masterCoaches,
-    masterTargetAudiences,
-    masterCategories,
+    masterDataResult,
   ] = await Promise.all([
     prisma.user.findMany({
       select: {
@@ -63,9 +62,7 @@ export default async function AdminPage() {
       by: ["programId", "status"],
       _count: { id: true },
     }),
-    prisma.masterCoach.findMany({ orderBy: { name: "asc" } }),
-    prisma.masterTargetAudience.findMany({ orderBy: { name: "asc" } }),
-    prisma.masterCategory.findMany({ orderBy: { name: "asc" } }),
+    wellnessGetMasterData(),
   ]);
 
   // Build O(1) subscriber count lookup map from SQL group-by
@@ -86,7 +83,11 @@ export default async function AdminPage() {
     title: p.title,
     slug: p.slug,
     description: p.description,
+    coverImage: p.coverImage || null,
+    difficultyLevel: p.difficultyLevel || "INTERMEDIATE",
     category: p.category || "Pilates",
+    equipment: p.equipment || null,
+    dailyCommitment: p.dailyCommitment || null,
     recommendedFor: p.recommendedFor,
     coachName: p.coachName,
     coachTitle: p.coachTitle || null,
@@ -136,11 +137,7 @@ export default async function AdminPage() {
     <AdminClient
       initialUsers={users}
       initialPrograms={programs}
-      initialMasterData={{
-        coaches: masterCoaches,
-        targetAudiences: masterTargetAudiences,
-        categories: masterCategories,
-      }}
+      initialMasterData={masterDataResult.data}
       currentAdminId={session.userId}
     />
   );

@@ -22,6 +22,12 @@ import {
   wellnessCreateMasterCategory,
   wellnessUpdateMasterCategory,
   wellnessDeleteMasterCategory,
+  wellnessCreateMasterEquipment,
+  wellnessUpdateMasterEquipment,
+  wellnessDeleteMasterEquipment,
+  wellnessCreateMasterDailyCommitment,
+  wellnessUpdateMasterDailyCommitment,
+  wellnessDeleteMasterDailyCommitment,
   MasterDataPayload,
 } from "@/wellness/actions/master";
 import {
@@ -78,6 +84,7 @@ import {
   Bell,
   Clock,
   Eye,
+  ImageIcon,
   EyeOff,
 } from "lucide-react";
 
@@ -178,7 +185,11 @@ export interface AdminProgram {
   title: string;
   slug: string;
   description: string;
+  coverImage?: string | null;
+  difficultyLevel?: string | null;
   category?: string | null;
+  equipment?: string | null;
+  dailyCommitment?: string | null;
   recommendedFor: string;
   coachName: string;
   coachTitle?: string | null;
@@ -358,12 +369,19 @@ function toggleTagInList(tag: string, currentVal: string): string {
   return stringifyTagList(nextTags);
 }
 
+export const DIFFICULTY_LEVELS = [
+  { value: "BEGINNER", label: "Beginner", description: "Foundational & gentle pace" },
+  { value: "MODERATE", label: "Moderate", description: "Accessible steady rhythm" },
+  { value: "INTERMEDIATE", label: "Intermediate", description: "Balanced endurance & technique" },
+  { value: "ADVANCED", label: "Advanced", description: "High progression & load" },
+  { value: "HIGH_INTENSITY", label: "High Intensity", description: "Maximum demand & athletic push" },
+] as const;
+
 interface DropdownTagPickerProps {
   label: string;
   subLabel?: string;
   value: string;
   onChange: (newValue: string) => void;
-  placeholder: string;
   disabled?: boolean;
   options: Array<{ id: string; name: string; title?: string | null }>;
   selectPlaceholder?: string;
@@ -377,15 +395,13 @@ function DropdownTagPicker({
   subLabel,
   value,
   onChange,
-  placeholder,
   disabled = false,
   options = [],
   selectPlaceholder = "Select from directory...",
   onManage,
-  manageLabel = "+ Manage",
+  manageLabel = "+ Manage in Directory",
   icon: Icon,
 }: DropdownTagPickerProps) {
-  const [draft, setDraft] = useState("");
   const tags = parseTagList(value);
 
   const addTag = (text: string) => {
@@ -395,20 +411,12 @@ function DropdownTagPicker({
       const next = [...tags, trimmed];
       onChange(stringifyTagList(next));
     }
-    setDraft("");
   };
 
   const removeTag = (indexToRemove: number) => {
     if (disabled) return;
     const next = tags.filter((_, idx) => idx !== indexToRemove);
     onChange(stringifyTagList(next));
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      addTag(draft);
-    }
   };
 
   const availableOptions = options.filter(
@@ -431,7 +439,7 @@ function DropdownTagPicker({
             <button
               type="button"
               onClick={onManage}
-              className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition underline"
+              className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition underline"
             >
               {manageLabel}
             </button>
@@ -440,51 +448,29 @@ function DropdownTagPicker({
       </div>
 
       {!disabled && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <select
-            value=""
-            onChange={(e) => {
-              if (e.target.value) {
-                addTag(e.target.value);
-              }
-            }}
-            className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-          >
-            <option value="">+ {selectPlaceholder}</option>
-            {availableOptions.map((opt) => (
-              <option key={opt.id} value={opt.name} className="bg-white dark:bg-zinc-900">
-                {opt.name} {opt.title ? `(${opt.title})` : ""}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex items-center gap-1.5">
-            <input
-              type="text"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
-            />
-            {draft.trim() && (
-              <button
-                type="button"
-                onClick={() => addTag(draft)}
-                className="px-3 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium shrink-0 hover:opacity-90 transition"
-              >
-                + Add
-              </button>
-            )}
-          </div>
-        </div>
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              addTag(e.target.value);
+            }
+          }}
+          className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+        >
+          <option value="">+ {selectPlaceholder}</option>
+          {availableOptions.map((opt) => (
+            <option key={opt.id} value={opt.name} className="bg-white dark:bg-zinc-900">
+              {opt.name} {opt.title ? `(${opt.title})` : ""}
+            </option>
+          ))}
+        </select>
       )}
 
       {/* Badges Display */}
       <div className="min-h-[38px] p-2 rounded-xl bg-zinc-50/70 dark:bg-white/[0.03] border border-zinc-200/80 dark:border-white/10 flex flex-wrap items-center gap-1.5">
         {tags.length === 0 ? (
           <span className="text-[11px] text-zinc-400 italic px-1">
-            None selected yet. Select from the dropdown or type to add.
+            None selected yet. Select from the directory dropdown above.
           </span>
         ) : (
           tags.map((tag, idx) => (
@@ -507,6 +493,70 @@ function DropdownTagPicker({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+interface SingleSelectDirectoryPickerProps {
+  label: string;
+  subLabel?: string;
+  value: string;
+  onChange: (val: string) => void;
+  options: Array<{ id: string; name: string }>;
+  disabled?: boolean;
+  onManage?: () => void;
+  manageLabel?: string;
+  placeholder?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
+
+function SingleSelectDirectoryPicker({
+  label,
+  subLabel,
+  value,
+  onChange,
+  options = [],
+  disabled = false,
+  onManage,
+  manageLabel = "+ Manage in Directory",
+  placeholder = "Select from directory...",
+  icon: Icon,
+}: SingleSelectDirectoryPickerProps) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+          {Icon && <Icon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+          <span>{label}</span>
+        </label>
+        <div className="flex items-center gap-2">
+          {subLabel && <span className="text-[10px] text-zinc-400">{subLabel}</span>}
+          {onManage && !disabled && (
+            <button
+              type="button"
+              onClick={onManage}
+              className="text-[11px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white transition underline"
+            >
+              {manageLabel}
+            </button>
+          )}
+        </div>
+      </div>
+      <select
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
+      >
+        <option value="" disabled>
+          {placeholder}
+        </option>
+        {options.map((opt) => (
+          <option key={opt.id} value={opt.name} className="bg-white dark:bg-zinc-900">
+            {opt.name}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -670,14 +720,18 @@ export function AdminClient({
   const [newCoachTitle, setNewCoachTitle] = useState("");
   const [newAudienceName, setNewAudienceName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newEquipmentName, setNewEquipmentName] = useState("");
+  const [newCommitmentName, setNewCommitmentName] = useState("");
   const [masterActionLoading, setMasterActionLoading] = useState(false);
 
   // Master Directories View State & Pagination
-  const [masterTab, setMasterTab] = useState<"all" | "coaches" | "audience" | "categories">("all");
+  const [masterTab, setMasterTab] = useState<"all" | "coaches" | "audience" | "categories" | "equipment" | "commitments">("all");
   const [masterSearch, setMasterSearch] = useState("");
   const [coachPage, setCoachPage] = useState(1);
   const [audiencePage, setAudiencePage] = useState(1);
   const [categoryPage, setCategoryPage] = useState(1);
+  const [equipmentPage, setEquipmentPage] = useState(1);
+  const [commitmentPage, setCommitmentPage] = useState(1);
   const MASTER_PAGE_SIZE = 5;
 
   const [showAddCoach, setShowAddCoach] = useState(false);
@@ -688,6 +742,35 @@ export function AdminClient({
 
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
+
+  const [showAddEquipment, setShowAddEquipment] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState<{ id: string; name: string } | null>(null);
+
+  const [showAddCommitment, setShowAddCommitment] = useState(false);
+  const [editingCommitment, setEditingCommitment] = useState<{ id: string; name: string } | null>(null);
+
+  const navigateToDirectory = (
+    tab: "coaches" | "audience" | "categories" | "equipment" | "commitments"
+  ) => {
+    setActiveMenu("master");
+    setMasterTab(tab);
+    if (tab === "coaches") {
+      setShowAddCoach(true);
+      setEditingCoach(null);
+    } else if (tab === "audience") {
+      setShowAddAudience(true);
+      setEditingAudience(null);
+    } else if (tab === "categories") {
+      setShowAddCategory(true);
+      setEditingCategory(null);
+    } else if (tab === "equipment") {
+      setShowAddEquipment(true);
+      setEditingEquipment(null);
+    } else if (tab === "commitments") {
+      setShowAddCommitment(true);
+      setEditingCommitment(null);
+    }
+  };
 
   const defaultStart = new Date(Date.now() + 3 * 24 * 3600 * 1000)
     .toISOString()
@@ -701,11 +784,17 @@ export function AdminClient({
     title: "Movement & Longevity Specialist",
   };
   const initialCategory = masterData.categories[0]?.name || "Pilates";
+  const initialEquipment = (masterData.equipment && masterData.equipment[0]?.name) || "Yoga Mat";
+  const initialCommitment = (masterData.dailyCommitments && masterData.dailyCommitments[0]?.name) || "20 - 30 Mins / Day";
 
   const [createForm, setCreateForm] = useState({
     title: "",
     description: "",
+    coverImage: "",
+    difficultyLevel: "INTERMEDIATE",
     category: initialCategory,
+    equipment: initialEquipment,
+    dailyCommitment: initialCommitment,
     coachName: initialCoach.name,
     coachTitle: initialCoach.title,
     recommendedFor: "Desk Workers, Sedentary Professionals",
@@ -777,7 +866,11 @@ export function AdminClient({
   const [metaForm, setMetaForm] = useState({
     title: "",
     description: "",
+    coverImage: "",
+    difficultyLevel: "INTERMEDIATE",
     category: "Pilates",
+    equipment: "Yoga Mat",
+    dailyCommitment: "20 - 30 Mins / Day",
     coachName: "",
     coachTitle: "",
     recommendedFor: "",
@@ -945,7 +1038,11 @@ export function AdminClient({
     setMetaForm({
       title: prog.title,
       description: prog.description,
+      coverImage: prog.coverImage || "",
+      difficultyLevel: prog.difficultyLevel || "INTERMEDIATE",
       category: prog.category || "Pilates",
+      equipment: prog.equipment || "Yoga Mat",
+      dailyCommitment: prog.dailyCommitment || "20 - 30 Mins / Day",
       coachName: prog.coachName,
       coachTitle: prog.coachTitle || "",
       recommendedFor: prog.recommendedFor || "All Levels",
@@ -1145,7 +1242,11 @@ export function AdminClient({
         programId: prog.id,
         title: metaForm.title.trim(),
         description: metaForm.description.trim(),
+        coverImage: metaForm.coverImage?.trim() || undefined,
+        difficultyLevel: metaForm.difficultyLevel,
         category: metaForm.category.trim(),
+        equipment: metaForm.equipment?.trim() || undefined,
+        dailyCommitment: metaForm.dailyCommitment?.trim() || undefined,
         coachName: metaForm.coachName.trim(),
         coachTitle: metaForm.coachTitle?.trim() || undefined,
         recommendedFor: metaForm.recommendedFor.trim(),
@@ -1177,7 +1278,11 @@ export function AdminClient({
                   ...p,
                   title: metaForm.title,
                   description: metaForm.description,
+                  coverImage: metaForm.coverImage?.trim() || null,
+                  difficultyLevel: metaForm.difficultyLevel,
                   category: metaForm.category,
+                  equipment: metaForm.equipment?.trim() || null,
+                  dailyCommitment: metaForm.dailyCommitment?.trim() || null,
                   coachName: metaForm.coachName,
                   coachTitle: metaForm.coachTitle || null,
                   recommendedFor: metaForm.recommendedFor,
@@ -1258,7 +1363,11 @@ export function AdminClient({
       const res = await wellnessAdminCreateProgram({
         title: createForm.title.trim(),
         description: createForm.description.trim(),
+        coverImage: createForm.coverImage?.trim() || undefined,
+        difficultyLevel: createForm.difficultyLevel,
         category: createForm.category?.trim() || "Pilates",
+        equipment: createForm.equipment?.trim() || undefined,
+        dailyCommitment: createForm.dailyCommitment?.trim() || undefined,
         coachName: createForm.coachName.trim(),
         coachTitle: createForm.coachTitle?.trim() || undefined,
         recommendedFor: createForm.recommendedFor.trim(),
@@ -1292,7 +1401,11 @@ export function AdminClient({
           title: created.title,
           slug: created.slug,
           description: created.description,
+          coverImage: created.coverImage || createForm.coverImage || null,
+          difficultyLevel: created.difficultyLevel || createForm.difficultyLevel || "INTERMEDIATE",
           category: created.category || createForm.category,
+          equipment: created.equipment || createForm.equipment || null,
+          dailyCommitment: created.dailyCommitment || createForm.dailyCommitment || null,
           recommendedFor: created.recommendedFor,
           coachName: created.coachName,
           coachTitle: created.coachTitle || createForm.coachTitle,
@@ -1532,6 +1645,138 @@ export function AdminClient({
         setFeedback({ type: "success", text: `Category updated.` });
       } else {
         setFeedback({ type: "error", text: res.message || "Failed to update category." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleAddEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEquipmentName.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessCreateMasterEquipment(newEquipmentName.trim());
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          equipment: [...(prev.equipment || []), res.data as any],
+        }));
+        setNewEquipmentName("");
+        setFeedback({ type: "success", text: `Equipment item added.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to add equipment." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleDeleteEquipment = async (id: string, name: string) => {
+    if (!confirm(`Delete equipment "${name}" from master records?`)) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessDeleteMasterEquipment(id);
+      if (res.success) {
+        setMasterData((prev) => ({
+          ...prev,
+          equipment: (prev.equipment || []).filter((e) => e.id !== id),
+        }));
+        setFeedback({ type: "success", text: `Equipment "${name}" removed.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to delete equipment." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleUpdateEquipment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEquipment || !editingEquipment.name.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessUpdateMasterEquipment({
+        id: editingEquipment.id,
+        name: editingEquipment.name.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          equipment: (prev.equipment || []).map((e) =>
+            e.id === editingEquipment.id ? (res.data as any) : e
+          ),
+        }));
+        setEditingEquipment(null);
+        setFeedback({ type: "success", text: `Equipment updated.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to update equipment." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleAddCommitment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCommitmentName.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessCreateMasterDailyCommitment(newCommitmentName.trim());
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          dailyCommitments: [...(prev.dailyCommitments || []), res.data as any],
+        }));
+        setNewCommitmentName("");
+        setFeedback({ type: "success", text: `Daily commitment option added.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to add commitment." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleDeleteCommitment = async (id: string, name: string) => {
+    if (!confirm(`Delete daily commitment "${name}" from master records?`)) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessDeleteMasterDailyCommitment(id);
+      if (res.success) {
+        setMasterData((prev) => ({
+          ...prev,
+          dailyCommitments: (prev.dailyCommitments || []).filter((c) => c.id !== id),
+        }));
+        setFeedback({ type: "success", text: `Daily commitment "${name}" removed.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to delete commitment." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleUpdateCommitment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCommitment || !editingCommitment.name.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessUpdateMasterDailyCommitment({
+        id: editingCommitment.id,
+        name: editingCommitment.name.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          dailyCommitments: (prev.dailyCommitments || []).map((c) =>
+            c.id === editingCommitment.id ? (res.data as any) : c
+          ),
+        }));
+        setEditingCommitment(null);
+        setFeedback({ type: "success", text: `Daily commitment updated.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to update commitment." });
       }
     } finally {
       setMasterActionLoading(false);
@@ -2760,59 +3005,93 @@ export function AdminClient({
                         key={prog.id}
                         className="p-6 sm:p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-6 hover:bg-zinc-50/70 dark:hover:bg-white/[0.02] transition"
                       >
-                        <div className="space-y-3 min-w-0 flex-1">
-                          {/* Badges Row */}
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1.5 font-semibold ${
-                                isDraft
-                                  ? "bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10"
-                                  : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  isDraft ? "bg-zinc-400" : "bg-emerald-400"
-                                }`}
+                        <div className="flex items-start gap-4 min-w-0 flex-1">
+                          {prog.coverImage && (
+                            <div className="hidden sm:block w-24 h-20 rounded-xl overflow-hidden shrink-0 border border-zinc-200 dark:border-white/10 bg-zinc-100 dark:bg-white/5">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={prog.coverImage}
+                                alt={prog.title}
+                                className="w-full h-full object-cover"
                               />
-                              <span>{isDraft ? "Draft (Unpublished)" : "Published"}</span>
-                            </span>
+                            </div>
+                          )}
 
-                            {prog.category && (
-                              <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
-                                {prog.category}
+                          <div className="space-y-3 min-w-0 flex-1">
+                            {/* Badges Row */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1.5 font-semibold ${
+                                  isDraft
+                                    ? "bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-white/10"
+                                    : "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    isDraft ? "bg-zinc-400" : "bg-emerald-400"
+                                  }`}
+                                />
+                                <span>{isDraft ? "Draft (Unpublished)" : "Published"}</span>
                               </span>
-                            )}
 
-                            <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10 flex items-center gap-1">
-                              {attendanceLabel}
-                            </span>
-                          </div>
+                              {prog.category && (
+                                <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
+                                  {prog.category}
+                                </span>
+                              )}
 
-                          {/* Title & Description */}
-                          <div>
-                            <h3 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white">
-                              {prog.title}
-                            </h3>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed line-clamp-2 mt-1 max-w-2xl">
-                              {prog.description}
-                            </p>
-                          </div>
+                              {prog.difficultyLevel && (
+                                <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10">
+                                  {DIFFICULTY_LEVELS.find((d) => d.value === prog.difficultyLevel)?.label || prog.difficultyLevel}
+                                </span>
+                              )}
 
-                          {/* Meta Row */}
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400 pt-1">
-                            <span>
-                              <strong className="text-zinc-700 dark:text-zinc-300">{targetDays}</strong> Training Days
-                            </span>
-                            <span>&bull;</span>
-                            <span>
-                              Lead: <strong className="text-zinc-700 dark:text-zinc-300">{prog.coachName}</strong>
-                            </span>
-                            <span>&bull;</span>
-                            <div className="flex items-center gap-1.5 font-mono">
-                              <span className="font-semibold text-zinc-900 dark:text-white">
-                                Rp {prog.price.toLocaleString("id-ID")}
+                              {prog.dailyCommitment && (
+                                <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10 flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-zinc-400" />
+                                  <span>{prog.dailyCommitment}</span>
+                                </span>
+                              )}
+
+                              <span className="text-[10px] font-medium px-2.5 py-1 rounded-full bg-zinc-100 dark:bg-white/5 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-white/10 flex items-center gap-1">
+                                {attendanceLabel}
                               </span>
+                            </div>
+
+                            {/* Title & Description */}
+                            <div>
+                              <h3 className="text-base font-semibold tracking-tight text-zinc-900 dark:text-white">
+                                {prog.title}
+                              </h3>
+                              <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed line-clamp-2 mt-1 max-w-2xl">
+                                {prog.description}
+                              </p>
+                            </div>
+
+                            {/* Meta Row */}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-500 dark:text-zinc-400 pt-1">
+                              <span>
+                                <strong className="text-zinc-700 dark:text-zinc-300">{targetDays}</strong> Training Days
+                              </span>
+                              <span>&bull;</span>
+                              <span>
+                                Lead: <strong className="text-zinc-700 dark:text-zinc-300">{prog.coachName}</strong>
+                              </span>
+                              {prog.equipment && (
+                                <>
+                                  <span>&bull;</span>
+                                  <span className="flex items-center gap-1">
+                                    <Dumbbell className="w-3 h-3 text-zinc-400" />
+                                    <span>{prog.equipment}</span>
+                                  </span>
+                                </>
+                              )}
+                              <span>&bull;</span>
+                              <div className="flex items-center gap-1.5 font-mono">
+                                <span className="font-semibold text-zinc-900 dark:text-white">
+                                  Rp {prog.price.toLocaleString("id-ID")}
+                                </span>
                               {prog.discountPercentage && prog.discountPercentage > 0 ? (
                                 <>
                                   <span className="line-through text-zinc-400 text-[10px]">
@@ -2826,6 +3105,7 @@ export function AdminClient({
                             </div>
                           </div>
                         </div>
+                      </div>
 
                         {/* Right side: Completeness & Manage button */}
                         <div className="flex flex-col sm:flex-row lg:items-center gap-6 shrink-0 lg:pl-6 lg:border-l border-zinc-100 dark:border-white/10">
@@ -2918,7 +3198,7 @@ export function AdminClient({
                     1. Program Information
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                    Basic program taxonomy, title, and public synopsis
+                    Core identity, intensity level, banner imagery, and public synopsis
                   </p>
                 </div>
 
@@ -2940,31 +3220,68 @@ export function AdminClient({
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                        Category / Type *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setActiveMenu("master")}
-                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
-                      >
-                        + Manage
-                      </button>
-                    </div>
+                    <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                      Difficulty / Intensity *
+                    </label>
                     <select
-                      value={createForm.category}
+                      value={createForm.difficultyLevel}
                       onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, category: e.target.value }))
+                        setCreateForm((p) => ({ ...p, difficultyLevel: e.target.value }))
                       }
                       className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
                     >
-                      {masterData.categories.map((cat) => (
-                        <option key={cat.id} value={cat.name} className="dark:bg-zinc-900">
-                          {cat.name}
+                      {DIFFICULTY_LEVELS.map((lvl) => (
+                        <option key={lvl.value} value={lvl.value} className="bg-white dark:bg-zinc-900">
+                          {lvl.label} – {lvl.description}
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Cover / Banner Image with Preview */}
+                  <div className="sm:col-span-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Cover / Banner Image URL</span>
+                      </label>
+                      {createForm.coverImage && (
+                        <button
+                          type="button"
+                          onClick={() => setCreateForm((p) => ({ ...p, coverImage: "" }))}
+                          className="text-[10px] text-zinc-500 hover:text-red-500 transition underline"
+                        >
+                          Clear Image
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="url"
+                      value={createForm.coverImage}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, coverImage: e.target.value }))
+                      }
+                      placeholder="https://images.unsplash.com/... or CDN banner URL"
+                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                    <div className="relative h-28 sm:h-36 rounded-xl border border-zinc-200/80 dark:border-white/10 bg-zinc-50 dark:bg-white/5 overflow-hidden flex items-center justify-center">
+                      {createForm.coverImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={createForm.coverImage}
+                          alt="Banner Preview"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5 text-zinc-400 text-center px-4">
+                          <ImageIcon className="w-6 h-6 stroke-1 text-zinc-400" />
+                          <span className="text-[11px]">Recommended 16:9 banner preview will appear here</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="sm:col-span-3 space-y-2">
@@ -2985,48 +3302,84 @@ export function AdminClient({
                 </div>
               </div>
 
-              {/* 2. COACH & RECOMMENDED FOR */}
+              {/* 2. DIRECTORIES & CLASSIFICATION */}
               <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
                 <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
-                    2. Coach &amp; Target Audience
+                    2. Directories &amp; Classification
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                    Instructor assignment and target persona profiling
+                    Taxonomy, coaching team, target personas, equipment, and daily time requirement (managed in Master Directories)
                   </p>
                 </div>
 
-                <div className="space-y-6">
+                <div className="grid sm:grid-cols-2 gap-5">
+                  <SingleSelectDirectoryPicker
+                    label="Category / Discipline *"
+                    subLabel="Program taxonomy"
+                    value={createForm.category}
+                    onChange={(val) => setCreateForm((p) => ({ ...p, category: val }))}
+                    options={masterData.categories}
+                    onManage={() => navigateToDirectory("categories")}
+                    manageLabel="+ Manage in Categories Directory"
+                    placeholder="Select Category..."
+                    icon={Tag}
+                  />
+
+                  <SingleSelectDirectoryPicker
+                    label="Daily Time Commitment *"
+                    subLabel="Estimated daily session length"
+                    value={createForm.dailyCommitment}
+                    onChange={(val) => setCreateForm((p) => ({ ...p, dailyCommitment: val }))}
+                    options={masterData.dailyCommitments || []}
+                    onManage={() => navigateToDirectory("commitments")}
+                    manageLabel="+ Manage in Commitments Directory"
+                    placeholder="Select Daily Commitment..."
+                    icon={Clock}
+                  />
+                </div>
+
+                <div className="space-y-6 pt-2">
                   <DropdownTagPicker
-                    label="Coach / Coaches"
-                    subLabel="Add one or multiple instructors"
+                    label="Equipment Needed"
+                    subLabel="Required tools & gear (select from master list)"
+                    value={createForm.equipment}
+                    onChange={(val) => setCreateForm((p) => ({ ...p, equipment: val }))}
+                    options={masterData.equipment || []}
+                    selectPlaceholder="Pick equipment from directory..."
+                    onManage={() => navigateToDirectory("equipment")}
+                    manageLabel="+ Manage in Equipment Directory"
+                    icon={Dumbbell}
+                  />
+
+                  <DropdownTagPicker
+                    label="Coach / Coaches *"
+                    subLabel="Assign instructors leading this program"
                     value={createForm.coachName}
                     onChange={(val) => setCreateForm((p) => ({ ...p, coachName: val }))}
-                    placeholder="Type coach name & press Enter..."
                     options={masterData.coaches.map((c) => ({
                       id: c.id,
                       name: c.name,
                       title: c.title,
                     }))}
-                    selectPlaceholder="Pick from Master Coaches..."
-                    onManage={() => setActiveMenu("master")}
-                    manageLabel="+ Manage Coaches"
+                    selectPlaceholder="Pick coach from directory..."
+                    onManage={() => navigateToDirectory("coaches")}
+                    manageLabel="+ Manage in Coaches Directory"
                     icon={UserCheck}
                   />
 
                   <DropdownTagPicker
-                    label="Target Audience (Recommended For)"
-                    subLabel="Ideal demographics & personas"
+                    label="Target Audience (Recommended For) *"
+                    subLabel="Ideal demographics & participant personas"
                     value={createForm.recommendedFor}
                     onChange={(val) => setCreateForm((p) => ({ ...p, recommendedFor: val }))}
-                    placeholder="Type audience persona & press Enter..."
                     options={masterData.targetAudiences.map((a) => ({
                       id: a.id,
                       name: a.name,
                     }))}
-                    selectPlaceholder="Pick from Master Audience..."
-                    onManage={() => setActiveMenu("master")}
-                    manageLabel="+ Manage Audience"
+                    selectPlaceholder="Pick audience from directory..."
+                    onManage={() => navigateToDirectory("audience")}
+                    manageLabel="+ Manage in Audience Directory"
                     icon={Sparkles}
                   />
                 </div>
@@ -3433,6 +3786,26 @@ export function AdminClient({
             categoryPage * categoryPageSize
           );
 
+          const filteredEquipment = (masterData.equipment || []).filter((eq) =>
+            eq.name.toLowerCase().includes(masterSearch.toLowerCase())
+          );
+          const equipmentPageSize = MASTER_PAGE_SIZE;
+          const totalEquipmentPages = Math.max(1, Math.ceil(filteredEquipment.length / equipmentPageSize));
+          const paginatedEquipment = filteredEquipment.slice(
+            (equipmentPage - 1) * equipmentPageSize,
+            equipmentPage * equipmentPageSize
+          );
+
+          const filteredCommitments = (masterData.dailyCommitments || []).filter((cm) =>
+            cm.name.toLowerCase().includes(masterSearch.toLowerCase())
+          );
+          const commitmentPageSize = MASTER_PAGE_SIZE;
+          const totalCommitmentPages = Math.max(1, Math.ceil(filteredCommitments.length / commitmentPageSize));
+          const paginatedCommitments = filteredCommitments.slice(
+            (commitmentPage - 1) * commitmentPageSize,
+            commitmentPage * commitmentPageSize
+          );
+
           return (
             <div className="space-y-8 animate-in fade-in duration-200">
               {/* Header Card */}
@@ -3445,7 +3818,7 @@ export function AdminClient({
                     Master Directories
                   </h2>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-2xl">
-                    Manage coaches, target audience personas, and category types used across all wellness programs.
+                    Manage instructors, target audience personas, categories, required equipment, and standardized daily commitments used across all wellness programs.
                   </p>
                 </div>
 
@@ -3458,6 +3831,8 @@ export function AdminClient({
                         { id: "coaches", label: `Coaches (${masterData.coaches.length})` },
                         { id: "audience", label: `Target Audience (${masterData.targetAudiences.length})` },
                         { id: "categories", label: `Categories (${masterData.categories.length})` },
+                        { id: "equipment", label: `Equipment (${(masterData.equipment || []).length})` },
+                        { id: "commitments", label: `Daily Commitments (${(masterData.dailyCommitments || []).length})` },
                       ] as const
                     ).map((tab) => (
                       <button
@@ -3468,6 +3843,8 @@ export function AdminClient({
                           setCoachPage(1);
                           setAudiencePage(1);
                           setCategoryPage(1);
+                          setEquipmentPage(1);
+                          setCommitmentPage(1);
                         }}
                         className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
                           masterTab === tab.id
@@ -3491,6 +3868,8 @@ export function AdminClient({
                         setCoachPage(1);
                         setAudiencePage(1);
                         setCategoryPage(1);
+                        setEquipmentPage(1);
+                        setCommitmentPage(1);
                       }}
                       placeholder="Search directories..."
                       className="w-full pl-9 pr-8 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
@@ -4092,6 +4471,364 @@ export function AdminClient({
                   />
                 </div>
               )}
+
+              {/* 4. EQUIPMENT DIRECTORY SECTION (Full Width Stack) */}
+              {(masterTab === "all" || masterTab === "equipment") && (
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Dumbbell className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-zinc-900 dark:text-white">
+                          Equipment Directory
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Physical training tools and equipment options ({(masterData.equipment || []).length} items registered)
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddEquipment(!showAddEquipment);
+                        setEditingEquipment(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddEquipment ? "Close Form" : "Add Equipment"}</span>
+                    </button>
+                  </div>
+
+                  {/* Add Equipment Collapsible Form */}
+                  {showAddEquipment && (
+                    <form
+                      onSubmit={async (e) => {
+                        await handleAddEquipment(e);
+                        setShowAddEquipment(false);
+                      }}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">
+                        Create New Master Equipment
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Equipment Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newEquipmentName}
+                          onChange={(e) => setNewEquipmentName(e.target.value)}
+                          placeholder="e.g. Yoga Mat, Foam Roller, Resistance Bands, Dumbbells"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Save Equipment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddEquipment(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Edit Equipment Form */}
+                  {editingEquipment && (
+                    <form
+                      onSubmit={handleUpdateEquipment}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Edit Equipment Name</span>
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Equipment Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingEquipment.name}
+                          onChange={(e) =>
+                            setEditingEquipment((p) => (p ? { ...p, name: e.target.value } : null))
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Update Equipment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingEquipment(null)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Equipment Items List */}
+                  <div className="rounded-xl border border-zinc-200/80 dark:border-white/10 overflow-hidden">
+                    <div className="divide-y divide-zinc-200/60 dark:divide-white/10">
+                      {paginatedEquipment.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-zinc-500">
+                          {masterSearch
+                            ? `No equipment matches "${masterSearch}".`
+                            : "No equipment added yet. Click \"Add Equipment\" above to create one."}
+                        </div>
+                      ) : (
+                        paginatedEquipment.map((eq) => (
+                          <div
+                            key={eq.id}
+                            className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 border border-zinc-200/60 dark:border-white/10">
+                                {eq.name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingEquipment({ id: eq.id, name: eq.name });
+                                  setShowAddEquipment(false);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition flex items-center gap-1 border border-zinc-200/60 dark:border-white/10"
+                                title="Edit equipment"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEquipment(eq.id, eq.name)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete equipment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Equipment Pagination */}
+                  <PaginationBar
+                    currentPage={equipmentPage}
+                    totalPages={totalEquipmentPages}
+                    onPageChange={setEquipmentPage}
+                    totalItems={filteredEquipment.length}
+                    pageSize={equipmentPageSize}
+                    itemLabel="equipment"
+                  />
+                </div>
+              )}
+
+              {/* 5. DAILY TIME COMMITMENT DIRECTORY SECTION (Full Width Stack) */}
+              {(masterTab === "all" || masterTab === "commitments") && (
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-semibold text-zinc-900 dark:text-white">
+                          Daily Time Commitment Directory
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Standardized daily time requirements ({(masterData.dailyCommitments || []).length} options registered)
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddCommitment(!showAddCommitment);
+                        setEditingCommitment(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddCommitment ? "Close Form" : "Add Commitment"}</span>
+                    </button>
+                  </div>
+
+                  {/* Add Commitment Collapsible Form */}
+                  {showAddCommitment && (
+                    <form
+                      onSubmit={async (e) => {
+                        await handleAddCommitment(e);
+                        setShowAddCommitment(false);
+                      }}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">
+                        Create New Daily Time Commitment
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Time Commitment Label *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newCommitmentName}
+                          onChange={(e) => setNewCommitmentName(e.target.value)}
+                          placeholder="e.g. 15 - 20 Mins / Day, 20 - 30 Mins / Day, 45 Mins / Day"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Save Commitment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCommitment(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Edit Commitment Form */}
+                  {editingCommitment && (
+                    <form
+                      onSubmit={handleUpdateCommitment}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Edit Daily Time Commitment</span>
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Time Commitment Label *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCommitment.name}
+                          onChange={(e) =>
+                            setEditingCommitment((p) => (p ? { ...p, name: e.target.value } : null))
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Update Commitment
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCommitment(null)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Commitments Items List */}
+                  <div className="rounded-xl border border-zinc-200/80 dark:border-white/10 overflow-hidden">
+                    <div className="divide-y divide-zinc-200/60 dark:divide-white/10">
+                      {paginatedCommitments.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-zinc-500">
+                          {masterSearch
+                            ? `No daily commitments match "${masterSearch}".`
+                            : "No commitments added yet. Click \"Add Commitment\" above to create one."}
+                        </div>
+                      ) : (
+                        paginatedCommitments.map((cm) => (
+                          <div
+                            key={cm.id}
+                            className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 border border-zinc-200/60 dark:border-white/10">
+                                {cm.name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCommitment({ id: cm.id, name: cm.name });
+                                  setShowAddCommitment(false);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition flex items-center gap-1 border border-zinc-200/60 dark:border-white/10"
+                                title="Edit commitment"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCommitment(cm.id, cm.name)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete commitment"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Commitments Pagination */}
+                  <PaginationBar
+                    currentPage={commitmentPage}
+                    totalPages={totalCommitmentPages}
+                    onPageChange={setCommitmentPage}
+                    totalItems={filteredCommitments.length}
+                    pageSize={commitmentPageSize}
+                    itemLabel="commitments"
+                  />
+                </div>
+              )}
             </div>
           );
         })()}
@@ -4407,7 +5144,7 @@ export function AdminClient({
                           1. Program Information
                         </h3>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                          Basic program taxonomy, title, and public synopsis
+                          Core identity, intensity level, banner imagery, and public synopsis
                         </p>
                       </div>
 
@@ -4432,97 +5169,177 @@ export function AdminClient({
 
                           <div className="space-y-2">
                             <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                              Category / Discipline *
+                              Difficulty / Intensity *
                             </label>
                             <select
-                              required
                               disabled={selectedProgram.isPublished}
-                              value={metaForm.category}
+                              value={metaForm.difficultyLevel}
                               onChange={(e) =>
-                                setMetaForm((p) => ({ ...p, category: e.target.value }))
+                                setMetaForm((p) => ({ ...p, difficultyLevel: e.target.value }))
                               }
                               className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
                             >
-                              {masterData.categories.map((cat) => (
-                                <option key={cat.id} value={cat.name} className="bg-white dark:bg-zinc-900">
-                                  {cat.name}
+                              {DIFFICULTY_LEVELS.map((lvl) => (
+                                <option key={lvl.value} value={lvl.value} className="bg-white dark:bg-zinc-900">
+                                  {lvl.label} – {lvl.description}
                                 </option>
                               ))}
-                              {masterData.categories.length === 0 && (
-                                <option value="Pilates" className="bg-white dark:bg-zinc-900">
-                                  Pilates
-                                </option>
-                              )}
                             </select>
                           </div>
-                        </div>
 
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                            Short Description *
-                          </label>
-                          <textarea
-                            rows={3}
-                            required
-                            disabled={selectedProgram.isPublished}
-                            value={metaForm.description}
-                            onChange={(e) =>
-                              setMetaForm((p) => ({
-                                ...p,
-                                description: e.target.value,
-                              }))
-                            }
-                            placeholder="Brief overview of curriculum objectives, daily cadence, and member outcomes..."
-                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
-                          />
+                          {/* Cover / Banner Image with Preview */}
+                          <div className="sm:col-span-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                                <ImageIcon className="w-3.5 h-3.5 text-zinc-400" />
+                                <span>Cover / Banner Image URL</span>
+                              </label>
+                              {metaForm.coverImage && !selectedProgram.isPublished && (
+                                <button
+                                  type="button"
+                                  onClick={() => setMetaForm((p) => ({ ...p, coverImage: "" }))}
+                                  className="text-[10px] text-zinc-500 hover:text-red-500 transition underline"
+                                >
+                                  Clear Image
+                                </button>
+                              )}
+                            </div>
+                            <input
+                              type="url"
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.coverImage}
+                              onChange={(e) =>
+                                setMetaForm((p) => ({ ...p, coverImage: e.target.value }))
+                              }
+                              placeholder="https://images.unsplash.com/... or CDN banner URL"
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                            />
+                            <div className="relative h-28 sm:h-36 rounded-xl border border-zinc-200/80 dark:border-white/10 bg-zinc-50 dark:bg-white/5 overflow-hidden flex items-center justify-center">
+                              {metaForm.coverImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={metaForm.coverImage}
+                                  alt="Banner Preview"
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLImageElement).style.display = "none";
+                                  }}
+                                />
+                              ) : (
+                                <div className="flex flex-col items-center gap-1.5 text-zinc-400 text-center px-4">
+                                  <ImageIcon className="w-6 h-6 stroke-1 text-zinc-400" />
+                                  <span className="text-[11px]">Recommended 16:9 banner preview will appear here</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="sm:col-span-3 space-y-2">
+                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                              Short Description *
+                            </label>
+                            <textarea
+                              rows={3}
+                              required
+                              disabled={selectedProgram.isPublished}
+                              value={metaForm.description}
+                              onChange={(e) =>
+                                setMetaForm((p) => ({
+                                  ...p,
+                                  description: e.target.value,
+                                }))
+                              }
+                              placeholder="Brief overview of curriculum objectives, daily cadence, and member outcomes..."
+                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white leading-relaxed disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* SECTION 2: COACH & RECOMMENDED FOR */}
+                    {/* SECTION 2: DIRECTORIES & CLASSIFICATION */}
                     <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
                       <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
-                          2. Coach &amp; Target Audience
+                          2. Directories &amp; Classification
                         </h3>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                          Assigned coach instructors and target demographic profiles
+                          Taxonomy, coaching team, target personas, equipment, and daily time requirement (managed in Master Directories)
                         </p>
                       </div>
 
-                      <div className="space-y-6">
+                      <div className="grid sm:grid-cols-2 gap-5">
+                        <SingleSelectDirectoryPicker
+                          label="Category / Discipline *"
+                          subLabel="Program taxonomy"
+                          value={metaForm.category}
+                          onChange={(val) => setMetaForm((p) => ({ ...p, category: val }))}
+                          options={masterData.categories}
+                          onManage={() => navigateToDirectory("categories")}
+                          manageLabel="+ Manage in Categories Directory"
+                          placeholder="Select Category..."
+                          icon={Tag}
+                          disabled={selectedProgram.isPublished}
+                        />
+
+                        <SingleSelectDirectoryPicker
+                          label="Daily Time Commitment *"
+                          subLabel="Estimated daily session length"
+                          value={metaForm.dailyCommitment}
+                          onChange={(val) => setMetaForm((p) => ({ ...p, dailyCommitment: val }))}
+                          options={masterData.dailyCommitments || []}
+                          onManage={() => navigateToDirectory("commitments")}
+                          manageLabel="+ Manage in Commitments Directory"
+                          placeholder="Select Daily Commitment..."
+                          icon={Clock}
+                          disabled={selectedProgram.isPublished}
+                        />
+                      </div>
+
+                      <div className="space-y-6 pt-2">
                         <DropdownTagPicker
-                          label="Coach / Coaches"
+                          label="Equipment Needed"
+                          subLabel="Required tools & gear (select from master list)"
+                          disabled={selectedProgram.isPublished}
+                          value={metaForm.equipment}
+                          onChange={(val) => setMetaForm((p) => ({ ...p, equipment: val }))}
+                          options={masterData.equipment || []}
+                          selectPlaceholder="Pick equipment from directory..."
+                          onManage={() => navigateToDirectory("equipment")}
+                          manageLabel="+ Manage in Equipment Directory"
+                          icon={Dumbbell}
+                        />
+
+                        <DropdownTagPicker
+                          label="Coach / Coaches *"
                           subLabel="Instructors assigned to lead this program"
                           disabled={selectedProgram.isPublished}
                           value={metaForm.coachName}
                           onChange={(val) => setMetaForm((p) => ({ ...p, coachName: val }))}
-                          placeholder="Type coach name & press Enter..."
                           options={masterData.coaches.map((c) => ({
                             id: c.id,
                             name: c.name,
                             title: c.title,
                           }))}
                           selectPlaceholder="Pick from Master Coaches..."
-                          onManage={() => setActiveMenu("master")}
-                          manageLabel="+ Manage Coaches"
+                          onManage={() => navigateToDirectory("coaches")}
+                          manageLabel="+ Manage in Coaches Directory"
                           icon={UserCheck}
                         />
 
                         <DropdownTagPicker
-                          label="Recommended For (Target Audience)"
+                          label="Target Audience (Recommended For) *"
                           subLabel="Ideal participant demographics & personas"
                           disabled={selectedProgram.isPublished}
                           value={metaForm.recommendedFor}
                           onChange={(val) => setMetaForm((p) => ({ ...p, recommendedFor: val }))}
-                          placeholder="Type audience persona & press Enter..."
                           options={masterData.targetAudiences.map((a) => ({
                             id: a.id,
                             name: a.name,
                           }))}
                           selectPlaceholder="Pick from Master Audience..."
-                          onManage={() => setActiveMenu("master")}
-                          manageLabel="+ Manage Audience"
+                          onManage={() => navigateToDirectory("audience")}
+                          manageLabel="+ Manage in Audience Directory"
                           icon={Sparkles}
                         />
                       </div>
