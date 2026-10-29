@@ -62,6 +62,30 @@ export async function wellnessDeleteMasterCoach(id: string): Promise<WellnessAct
   return { success: true, message: "Coach deleted." };
 }
 
+export async function wellnessUpdateMasterCoach(input: {
+  id: string;
+  name: string;
+  title: string;
+}): Promise<WellnessActionResult> {
+  await requireSuperadmin();
+  const name = input.name?.trim();
+  const title = input.title?.trim();
+
+  if (!name || name.length < 2) {
+    return { success: false, message: "Coach name must be at least 2 characters." };
+  }
+  if (!title || title.length < 2) {
+    return { success: false, message: "Coach title must be at least 2 characters." };
+  }
+
+  const coach = await prisma.masterCoach.update({
+    where: { id: input.id },
+    data: { name, title },
+  });
+
+  return { success: true, message: `Coach "${coach.name}" updated.`, data: coach };
+}
+
 export async function wellnessCreateMasterTargetAudience(nameInput: string): Promise<WellnessActionResult> {
   await requireSuperadmin();
   const name = nameInput?.trim();
@@ -87,6 +111,24 @@ export async function wellnessDeleteMasterTargetAudience(id: string): Promise<We
   return { success: true, message: "Target audience removed." };
 }
 
+export async function wellnessUpdateMasterTargetAudience(input: {
+  id: string;
+  name: string;
+}): Promise<WellnessActionResult> {
+  await requireSuperadmin();
+  const name = input.name?.trim();
+  if (!name || name.length < 2) {
+    return { success: false, message: "Target audience must be at least 2 characters." };
+  }
+
+  const item = await prisma.masterTargetAudience.update({
+    where: { id: input.id },
+    data: { name },
+  });
+
+  return { success: true, message: `Target audience "${item.name}" updated.`, data: item };
+}
+
 export async function wellnessCreateMasterCategory(nameInput: string): Promise<WellnessActionResult> {
   await requireSuperadmin();
   const name = nameInput?.trim();
@@ -110,4 +152,22 @@ export async function wellnessDeleteMasterCategory(id: string): Promise<Wellness
   await requireSuperadmin();
   await prisma.masterCategory.delete({ where: { id } });
   return { success: true, message: "Category removed." };
+}
+
+export async function wellnessUpdateMasterCategory(input: {
+  id: string;
+  name: string;
+}): Promise<WellnessActionResult> {
+  await requireSuperadmin();
+  const name = input.name?.trim();
+  if (!name || name.length < 2) {
+    return { success: false, message: "Category name must be at least 2 characters." };
+  }
+
+  const item = await prisma.masterCategory.update({
+    where: { id: input.id },
+    data: { name },
+  });
+
+  return { success: true, message: `Category "${item.name}" updated.`, data: item };
 }

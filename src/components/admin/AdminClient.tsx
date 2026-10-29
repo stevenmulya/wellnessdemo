@@ -14,10 +14,13 @@ import {
 } from "@/wellness/actions/program";
 import {
   wellnessCreateMasterCoach,
+  wellnessUpdateMasterCoach,
   wellnessDeleteMasterCoach,
   wellnessCreateMasterTargetAudience,
+  wellnessUpdateMasterTargetAudience,
   wellnessDeleteMasterTargetAudience,
   wellnessCreateMasterCategory,
+  wellnessUpdateMasterCategory,
   wellnessDeleteMasterCategory,
   MasterDataPayload,
 } from "@/wellness/actions/master";
@@ -36,6 +39,7 @@ import {
   Moon,
   QrCode,
   Plus,
+  Pencil,
   CheckCircle2,
   LogOut,
   ArrowUpRight,
@@ -103,7 +107,7 @@ export function getDefaultNotificationsForType(dayType: string): DayNotification
       {
         time: "08:30",
         label: "Morning • Live Studio / Zoom Circle",
-        message: "Live Community Circle begins today. Check the studio directions or virtual link on your cohort dashboard.",
+        message: "Live Community Circle begins today. Check the studio directions or virtual link on your program dashboard.",
       },
       {
         time: "13:00",
@@ -354,6 +358,159 @@ function toggleTagInList(tag: string, currentVal: string): string {
   return stringifyTagList(nextTags);
 }
 
+interface DropdownTagPickerProps {
+  label: string;
+  subLabel?: string;
+  value: string;
+  onChange: (newValue: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  options: Array<{ id: string; name: string; title?: string | null }>;
+  selectPlaceholder?: string;
+  onManage?: () => void;
+  manageLabel?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}
+
+function DropdownTagPicker({
+  label,
+  subLabel,
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  options = [],
+  selectPlaceholder = "Select from directory...",
+  onManage,
+  manageLabel = "+ Manage",
+  icon: Icon,
+}: DropdownTagPickerProps) {
+  const [draft, setDraft] = useState("");
+  const tags = parseTagList(value);
+
+  const addTag = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    if (!tags.some((t) => t.toLowerCase() === trimmed.toLowerCase())) {
+      const next = [...tags, trimmed];
+      onChange(stringifyTagList(next));
+    }
+    setDraft("");
+  };
+
+  const removeTag = (indexToRemove: number) => {
+    if (disabled) return;
+    const next = tags.filter((_, idx) => idx !== indexToRemove);
+    onChange(stringifyTagList(next));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(draft);
+    }
+  };
+
+  const availableOptions = options.filter(
+    (opt) => !tags.some((t) => t.toLowerCase() === opt.name.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+          {Icon && <Icon className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+          <span>{label}</span>
+          <span className="text-[11px] text-zinc-400 font-normal">
+            ({tags.length} selected)
+          </span>
+        </label>
+        <div className="flex items-center gap-2">
+          {subLabel && <span className="text-[10px] text-zinc-400">{subLabel}</span>}
+          {onManage && !disabled && (
+            <button
+              type="button"
+              onClick={onManage}
+              className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition underline"
+            >
+              {manageLabel}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {!disabled && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) {
+                addTag(e.target.value);
+              }
+            }}
+            className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+          >
+            <option value="">+ {selectPlaceholder}</option>
+            {availableOptions.map((opt) => (
+              <option key={opt.id} value={opt.name} className="bg-white dark:bg-zinc-900">
+                {opt.name} {opt.title ? `(${opt.title})` : ""}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+            />
+            {draft.trim() && (
+              <button
+                type="button"
+                onClick={() => addTag(draft)}
+                className="px-3 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium shrink-0 hover:opacity-90 transition"
+              >
+                + Add
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Badges Display */}
+      <div className="min-h-[38px] p-2 rounded-xl bg-zinc-50/70 dark:bg-white/[0.03] border border-zinc-200/80 dark:border-white/10 flex flex-wrap items-center gap-1.5">
+        {tags.length === 0 ? (
+          <span className="text-[11px] text-zinc-400 italic px-1">
+            None selected yet. Select from the dropdown or type to add.
+          </span>
+        ) : (
+          tags.map((tag, idx) => (
+            <span
+              key={idx}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-zinc-800 text-zinc-900 dark:text-white border border-zinc-200 dark:border-white/10 shadow-2xs"
+            >
+              <span>{tag}</span>
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => removeTag(idx)}
+                  className="hover:opacity-70 rounded-full p-0.5 text-zinc-400 hover:text-red-500 transition"
+                  title={`Remove ${tag}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </span>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface MultiTagInputProps {
   label: string;
   subLabel?: string;
@@ -514,6 +671,23 @@ export function AdminClient({
   const [newAudienceName, setNewAudienceName] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
   const [masterActionLoading, setMasterActionLoading] = useState(false);
+
+  // Master Directories View State & Pagination
+  const [masterTab, setMasterTab] = useState<"all" | "coaches" | "audience" | "categories">("all");
+  const [masterSearch, setMasterSearch] = useState("");
+  const [coachPage, setCoachPage] = useState(1);
+  const [audiencePage, setAudiencePage] = useState(1);
+  const [categoryPage, setCategoryPage] = useState(1);
+  const MASTER_PAGE_SIZE = 5;
+
+  const [showAddCoach, setShowAddCoach] = useState(false);
+  const [editingCoach, setEditingCoach] = useState<{ id: string; name: string; title: string } | null>(null);
+
+  const [showAddAudience, setShowAddAudience] = useState(false);
+  const [editingAudience, setEditingAudience] = useState<{ id: string; name: string } | null>(null);
+
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<{ id: string; name: string } | null>(null);
 
   const defaultStart = new Date(Date.now() + 3 * 24 * 3600 * 1000)
     .toISOString()
@@ -1064,7 +1238,7 @@ export function AdminClient({
       return;
     }
     if (!createForm.coachName.trim()) {
-      setCreateError("Please select a Lead Coach.");
+      setCreateError("Please select or add at least one Coach.");
       return;
     }
     if (createForm.description.trim().length < 10) {
@@ -1149,7 +1323,7 @@ export function AdminClient({
         openProgramDetail(formattedNewProgram, 1);
         setFeedback({
           type: "success",
-          text: `Draft cohort "${formattedNewProgram.title}" created. You can now build daily routines or publish when ready.`,
+          text: `Draft program "${formattedNewProgram.title}" created. You can now build daily routines or publish when ready.`,
         });
         router.refresh();
       } else {
@@ -1285,6 +1459,85 @@ export function AdminClient({
     }
   };
 
+  const handleUpdateCoach = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCoach || !editingCoach.name.trim() || !editingCoach.title.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessUpdateMasterCoach({
+        id: editingCoach.id,
+        name: editingCoach.name.trim(),
+        title: editingCoach.title.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          coaches: prev.coaches.map((c) =>
+            c.id === editingCoach.id ? (res.data as any) : c
+          ),
+        }));
+        setEditingCoach(null);
+        setFeedback({ type: "success", text: `Coach updated.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to update coach." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleUpdateAudience = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAudience || !editingAudience.name.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessUpdateMasterTargetAudience({
+        id: editingAudience.id,
+        name: editingAudience.name.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          targetAudiences: prev.targetAudiences.map((a) =>
+            a.id === editingAudience.id ? (res.data as any) : a
+          ),
+        }));
+        setEditingAudience(null);
+        setFeedback({ type: "success", text: `Target audience updated.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to update target audience." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || !editingCategory.name.trim()) return;
+    setMasterActionLoading(true);
+    try {
+      const res = await wellnessUpdateMasterCategory({
+        id: editingCategory.id,
+        name: editingCategory.name.trim(),
+      });
+      if (res.success && res.data) {
+        setMasterData((prev) => ({
+          ...prev,
+          categories: prev.categories.map((c) =>
+            c.id === editingCategory.id ? (res.data as any) : c
+          ),
+        }));
+        setEditingCategory(null);
+        setFeedback({ type: "success", text: `Category updated.` });
+      } else {
+        setFeedback({ type: "error", text: res.message || "Failed to update category." });
+      }
+    } finally {
+      setMasterActionLoading(false);
+    }
+  };
+
   const validateProgramForPublish = (prog: AdminProgram) => {
     const missingDays: number[] = [];
     const targetDays = prog.durationDays || 21;
@@ -1300,7 +1553,7 @@ export function AdminClient({
       errors.push("Program Title is required.");
     }
     if (!prog.coachName.trim()) {
-      errors.push("Lead Coach Name is required.");
+      errors.push("At least one Coach is required.");
     }
     if ((prog.description || "").trim().length < 15) {
       errors.push("Program description must be at least 15 characters long.");
@@ -1317,13 +1570,13 @@ export function AdminClient({
     const endTs = new Date(prog.endDate).getTime();
 
     if (isNaN(startTs) || isNaN(deadlineTs) || isNaN(endTs)) {
-      errors.push("Cohort dates must be valid calendar dates.");
+      errors.push("Program dates must be valid calendar dates.");
     } else {
       if (deadlineTs > startTs) {
-        errors.push("Registration cutoff date cannot be after the cohort start date.");
+        errors.push("Registration cutoff date cannot be after the program start date.");
       }
       if (endTs <= startTs) {
-        errors.push("Cohort end date must be after the start date.");
+        errors.push("Program end date must be after the start date.");
       }
     }
 
@@ -1769,7 +2022,7 @@ export function AdminClient({
             >
               <span className="flex items-center gap-2.5">
                 <Layers className="w-4 h-4 shrink-0" />
-                <span>Cohorts</span>
+                <span>Programs</span>
               </span>
               <span className="text-[11px] font-mono opacity-70">{programs.length}</span>
             </button>
@@ -1790,7 +2043,7 @@ export function AdminClient({
             >
               <span className="flex items-center gap-2.5">
                 <Tag className="w-4 h-4 shrink-0" />
-                <span>Master Data</span>
+                <span>Directories</span>
               </span>
               <span className="text-[11px] font-mono opacity-70">
                 {masterData.coaches.length + masterData.targetAudiences.length + masterData.categories.length}
@@ -1934,25 +2187,25 @@ export function AdminClient({
                   {programs.length}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Curated cohort protocols
+                  Catalog total
                 </p>
               </div>
 
               <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
                 <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
-                  Published Cohorts
+                  Published Programs
                 </span>
                 <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {liveProgramsCount}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Live for enrollments
+                  Live &amp; open
                 </p>
               </div>
 
               <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
                 <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
-                  Draft Cohorts
+                  Draft Programs
                 </span>
                 <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-zinc-400 my-1">
                   {draftProgramsCount}
@@ -1970,7 +2223,7 @@ export function AdminClient({
                   {curriculumReadyCount}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  {programs.length > 0 ? Math.round((curriculumReadyCount / programs.length) * 100) : 0}% scheduled
+                  {programs.length > 0 ? Math.round((curriculumReadyCount / programs.length) * 100) : 0}% completed
                 </p>
               </div>
             </>
@@ -1986,7 +2239,7 @@ export function AdminClient({
                   {masterData.coaches.length}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Active instructors
+                  Instructor profiles
                 </p>
               </div>
 
@@ -1998,7 +2251,7 @@ export function AdminClient({
                   {masterData.targetAudiences.length}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Recommended segments
+                  Audience personas
                 </p>
               </div>
 
@@ -2010,19 +2263,19 @@ export function AdminClient({
                   {masterData.categories.length}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Taxonomies
+                  Program taxonomies
                 </p>
               </div>
 
               <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-5 sm:p-6 border border-zinc-200/80 dark:border-white/10 shadow-xs flex flex-col justify-between min-w-0">
                 <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 dark:text-zinc-400 block truncate">
-                  Active Cohorts Linked
+                  Active Programs
                 </span>
                 <div className="text-2xl sm:text-3xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white my-1">
                   {programs.length}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Using master profiles
+                  Linked programs
                 </p>
               </div>
             </>
@@ -2074,7 +2327,7 @@ export function AdminClient({
                   {enrolledUsersCount}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                  Active in cohort
+                  Active enrolled
                 </p>
               </div>
             </>
@@ -2169,7 +2422,7 @@ export function AdminClient({
                   Platform Overview
                 </h2>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 font-normal">
-                  Monitor live cohorts, verify member payments, and review customer standings in real time.
+                  Monitor live programs, verify member payments, and review customer standings in real time.
                 </p>
               </div>
 
@@ -2198,9 +2451,9 @@ export function AdminClient({
               </div>
             </div>
 
-            {/* 2-Column Split: Cohorts Health & Pending Approvals */}
+            {/* 2-Column Split: Programs Health & Pending Approvals */}
             <div className="grid lg:grid-cols-2 gap-6">
-              {/* Left Column: Cohorts Directory Snapshot */}
+              {/* Left Column: Programs Directory Snapshot */}
               <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs overflow-hidden flex flex-col">
                 <div className="px-6 py-4 border-b border-zinc-100 dark:border-white/10 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -2442,7 +2695,7 @@ export function AdminClient({
                       }`}
                     >
                       {status === "ALL"
-                        ? "All Cohorts"
+                        ? "All Programs"
                         : status === "PUBLISHED"
                         ? "Published"
                         : "Draft (Unpublished)"}
@@ -2634,7 +2887,7 @@ export function AdminClient({
               </button>
               <div className="flex flex-wrap items-center gap-2.5">
                 <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-medium">
-                  Draft Cohort
+                  Draft Program
                 </span>
                 <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400">
                   {createForm.durationDays} Days • Net Rp{" "}
@@ -2665,7 +2918,7 @@ export function AdminClient({
                     1. Program Information
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                    Basic cohort taxonomy, title, and public synopsis
+                    Basic program taxonomy, title, and public synopsis
                   </p>
                 </div>
 
@@ -2743,99 +2996,39 @@ export function AdminClient({
                   </p>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-5">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                        Lead Coach *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setActiveMenu("master")}
-                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
-                      >
-                        + Manage Coaches
-                      </button>
-                    </div>
-                    <select
-                      value={createForm.coachName}
-                      onChange={(e) => {
-                        const selected = masterData.coaches.find(
-                          (c) => c.name === e.target.value
-                        );
-                        setCreateForm((p) => ({
-                          ...p,
-                          coachName: e.target.value,
-                          coachTitle: selected?.title || p.coachTitle,
-                        }));
-                      }}
-                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                    >
-                      {masterData.coaches.map((c) => (
-                        <option key={c.id} value={c.name} className="dark:bg-zinc-900">
-                          {c.name} — {c.title}
-                        </option>
-                      ))}
-                    </select>
-                    {createForm.coachTitle && (
-                      <span className="text-[11px] text-zinc-500 block pt-0.5">
-                        Specialization: {createForm.coachTitle}
-                      </span>
-                    )}
-                  </div>
+                <div className="space-y-6">
+                  <DropdownTagPicker
+                    label="Coach / Coaches"
+                    subLabel="Add one or multiple instructors"
+                    value={createForm.coachName}
+                    onChange={(val) => setCreateForm((p) => ({ ...p, coachName: val }))}
+                    placeholder="Type coach name & press Enter..."
+                    options={masterData.coaches.map((c) => ({
+                      id: c.id,
+                      name: c.name,
+                      title: c.title,
+                    }))}
+                    selectPlaceholder="Pick from Master Coaches..."
+                    onManage={() => setActiveMenu("master")}
+                    manageLabel="+ Manage Coaches"
+                    icon={UserCheck}
+                  />
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                        Target Audience (Recommended For) *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setActiveMenu("master")}
-                        className="text-[10px] text-zinc-500 hover:text-zinc-900 dark:hover:text-white transition"
-                      >
-                        + Manage Audience
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      required
-                      value={createForm.recommendedFor}
-                      onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, recommendedFor: e.target.value }))
-                      }
-                      placeholder="e.g. Desk Workers, Mom, Business Professional"
-                      className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
-                    />
-                    {/* Quick selection chips from MasterTargetAudience */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      {masterData.targetAudiences.map((aud) => {
-                        const isSelected = parseTagList(createForm.recommendedFor).some(
-                          (t) => t.toLowerCase() === aud.name.toLowerCase()
-                        );
-                        return (
-                          <button
-                            key={aud.id}
-                            type="button"
-                            onClick={() =>
-                              setCreateForm((p) => ({
-                                ...p,
-                                recommendedFor: toggleTagInList(aud.name, p.recommendedFor),
-                              }))
-                            }
-                            className={`text-[10px] px-2.5 py-1 rounded-lg border transition ${
-                              isSelected
-                                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-transparent font-medium"
-                                : "bg-zinc-100 hover:bg-zinc-200 dark:bg-white/5 dark:hover:bg-white/10 text-zinc-600 dark:text-zinc-400 border-zinc-200/80 dark:border-white/10"
-                            }`}
-                          >
-                            {isSelected ? "✓ " : "+ "}
-                            {aud.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <DropdownTagPicker
+                    label="Target Audience (Recommended For)"
+                    subLabel="Ideal demographics & personas"
+                    value={createForm.recommendedFor}
+                    onChange={(val) => setCreateForm((p) => ({ ...p, recommendedFor: val }))}
+                    placeholder="Type audience persona & press Enter..."
+                    options={masterData.targetAudiences.map((a) => ({
+                      id: a.id,
+                      name: a.name,
+                    }))}
+                    selectPlaceholder="Pick from Master Audience..."
+                    onManage={() => setActiveMenu("master")}
+                    manageLabel="+ Manage Audience"
+                    icon={Sparkles}
+                  />
                 </div>
               </div>
 
@@ -3046,7 +3239,7 @@ export function AdminClient({
                     5. Pricing &amp; Participant Quota
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                    Tuition structure, promotional discount, and cohort seat cap
+                    Tuition structure, promotional discount, and participant seat cap
                   </p>
                 </div>
 
@@ -3134,20 +3327,20 @@ export function AdminClient({
                 </div>
               </div>
 
-              {/* 6. WHATSAPP COMMUNITY LINK */}
+              {/* 6. COMMUNITY CHANNEL LINK */}
               <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
                 <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
-                    6. WhatsApp Community Link
+                    6. Community Channel / Group URL
                   </h3>
                   <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                    Group invitation URL delivered to registered participants
+                    Private group or channel link for enrolled members (WhatsApp, Discord, LINE, WeChat, Slack, Telegram)
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                    WhatsApp Group Invite URL
+                    Community Channel / Group URL
                   </label>
                   <input
                     type="url"
@@ -3158,7 +3351,7 @@ export function AdminClient({
                         communityLink: e.target.value,
                       }))
                     }
-                    placeholder="https://chat.whatsapp.com/..."
+                    placeholder="https://chat.whatsapp.com/..., discord.gg/..., line.me/..., etc."
                     className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                   />
                 </div>
@@ -3188,7 +3381,7 @@ export function AdminClient({
                     ) : (
                       <Plus className="w-3.5 h-3.5" />
                     )}
-                    <span>Create Cohort</span>
+                    <span>Create Program</span>
                   </button>
                 </div>
               </div>
@@ -3205,192 +3398,703 @@ export function AdminClient({
         )}
 
         {/* ================================================================= */}
-        {/* VIEW: MASTER DATA MANAGEMENT (Coaches, Audience, Categories)       */}
+        {/* VIEW: MASTER DIRECTORIES MANAGEMENT (Stacked with Pagination & CRUD)*/}
         {/* ================================================================= */}
-        {activeMenu === "master" && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Header */}
-            <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-7 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-2">
-              <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-medium">
-                Central Catalog
-              </span>
-              <h2 className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-white">
-                Master Data Management
-              </h2>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-2xl">
-                Manage coaches, target audience personas, and category types used when creating and configuring cohorts.
-              </p>
-            </div>
+        {activeMenu === "master" && (() => {
+          const filteredCoaches = masterData.coaches.filter(
+            (c) =>
+              c.name.toLowerCase().includes(masterSearch.toLowerCase()) ||
+              c.title.toLowerCase().includes(masterSearch.toLowerCase())
+          );
+          const coachPageSize = MASTER_PAGE_SIZE;
+          const totalCoachPages = Math.max(1, Math.ceil(filteredCoaches.length / coachPageSize));
+          const paginatedCoaches = filteredCoaches.slice(
+            (coachPage - 1) * coachPageSize,
+            coachPage * coachPageSize
+          );
 
-            {/* 3-Column Master Grid */}
-            <div className="grid lg:grid-cols-3 gap-6">
-              
-              {/* 1. MASTER COACHES */}
-              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
-                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
-                    <UserCheck className="w-4 h-4 text-zinc-400" />
-                    <span>Master Coaches ({masterData.coaches.length})</span>
-                  </h3>
+          const filteredAudiences = masterData.targetAudiences.filter((a) =>
+            a.name.toLowerCase().includes(masterSearch.toLowerCase())
+          );
+          const audiencePageSize = MASTER_PAGE_SIZE;
+          const totalAudiencePages = Math.max(1, Math.ceil(filteredAudiences.length / audiencePageSize));
+          const paginatedAudiences = filteredAudiences.slice(
+            (audiencePage - 1) * audiencePageSize,
+            audiencePage * audiencePageSize
+          );
+
+          const filteredCategories = masterData.categories.filter((cat) =>
+            cat.name.toLowerCase().includes(masterSearch.toLowerCase())
+          );
+          const categoryPageSize = MASTER_PAGE_SIZE;
+          const totalCategoryPages = Math.max(1, Math.ceil(filteredCategories.length / categoryPageSize));
+          const paginatedCategories = filteredCategories.slice(
+            (categoryPage - 1) * categoryPageSize,
+            categoryPage * categoryPageSize
+          );
+
+          return (
+            <div className="space-y-8 animate-in fade-in duration-200">
+              {/* Header Card */}
+              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-6 sm:p-8 border border-zinc-200/80 dark:border-white/10 shadow-xs space-y-5">
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-medium">
+                    Central Catalog
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-geometric font-light tracking-tight text-zinc-900 dark:text-white">
+                    Master Directories
+                  </h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-2xl">
+                    Manage coaches, target audience personas, and category types used across all wellness programs.
+                  </p>
                 </div>
 
-                {/* Add Coach Form */}
-                <form onSubmit={handleAddCoach} className="space-y-2.5">
-                  <input
-                    type="text"
-                    required
-                    value={newCoachName}
-                    onChange={(e) => setNewCoachName(e.target.value)}
-                    placeholder="Coach Name (e.g. Coach Sarah Jenkins)"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                  />
-                  <input
-                    type="text"
-                    required
-                    value={newCoachTitle}
-                    onChange={(e) => setNewCoachTitle(e.target.value)}
-                    placeholder="Title (e.g. Senior Pilates Lead)"
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                  />
-                  <button
-                    type="submit"
-                    disabled={masterActionLoading}
-                    className="w-full py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center justify-center gap-1.5 transition disabled:opacity-50"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Coach</span>
-                  </button>
-                </form>
+                {/* Sub-tab Switcher & Search Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2 border-t border-zinc-100 dark:border-white/10">
+                  <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl bg-zinc-100 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 w-fit">
+                    {(
+                      [
+                        { id: "all", label: "All Directories" },
+                        { id: "coaches", label: `Coaches (${masterData.coaches.length})` },
+                        { id: "audience", label: `Target Audience (${masterData.targetAudiences.length})` },
+                        { id: "categories", label: `Categories (${masterData.categories.length})` },
+                      ] as const
+                    ).map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => {
+                          setMasterTab(tab.id);
+                          setCoachPage(1);
+                          setAudiencePage(1);
+                          setCategoryPage(1);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition ${
+                          masterTab === tab.id
+                            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
+                            : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white"
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
 
-                {/* List */}
-                <div className="divide-y divide-zinc-100 dark:divide-white/5 max-h-80 overflow-y-auto">
-                  {masterData.coaches.map((c) => (
-                    <div
-                      key={c.id}
-                      className="py-3 flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="min-w-0">
-                        <p className="font-semibold text-zinc-900 dark:text-white truncate">
-                          {c.name}
-                        </p>
-                        <p className="text-[11px] text-zinc-500 truncate">{c.title}</p>
+                  {/* Search Filter */}
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={masterSearch}
+                      onChange={(e) => {
+                        setMasterSearch(e.target.value);
+                        setCoachPage(1);
+                        setAudiencePage(1);
+                        setCategoryPage(1);
+                      }}
+                      placeholder="Search directories..."
+                      className="w-full pl-9 pr-8 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
+                    />
+                    {masterSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setMasterSearch("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* 1. COACHES DIRECTORY SECTION (Full Width Stack) */}
+              {(masterTab === "all" || masterTab === "coaches") && (
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <UserCheck className="w-5 h-5" />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCoach(c.id, c.name)}
-                        className="p-1.5 text-zinc-400 hover:text-red-600 rounded-lg transition"
-                        title="Delete coach"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                          <span>Coaches Directory</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 font-mono">
+                            {filteredCoaches.length} {filteredCoaches.length === 1 ? "Coach" : "Coaches"}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Instructors and specialists assigned to lead programs and daily workouts
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* 2. MASTER TARGET AUDIENCES */}
-              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
-                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-zinc-400" />
-                    <span>Target Audiences ({masterData.targetAudiences.length})</span>
-                  </h3>
-                </div>
-
-                {/* Add Audience Form */}
-                <form onSubmit={handleAddAudience} className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={newAudienceName}
-                    onChange={(e) => setNewAudienceName(e.target.value)}
-                    placeholder="e.g. Business Woman"
-                    className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                  />
-                  <button
-                    type="submit"
-                    disabled={masterActionLoading}
-                    className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1 transition disabled:opacity-50 shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add</span>
-                  </button>
-                </form>
-
-                {/* Chips */}
-                <div className="flex flex-wrap gap-2 max-h-80 overflow-y-auto pt-1">
-                  {masterData.targetAudiences.map((aud) => (
-                    <span
-                      key={aud.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/5 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-white/10"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddCoach(!showAddCoach);
+                        setEditingCoach(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition shrink-0"
                     >
-                      <span>{aud.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteAudience(aud.id, aud.name)}
-                        className="text-zinc-400 hover:text-red-500 transition"
-                        title="Remove tag"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddCoach ? "Close Form" : "Add Coach"}</span>
+                    </button>
+                  </div>
 
-              {/* 3. MASTER CATEGORIES */}
-              <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 space-y-5">
-                <div className="border-b border-zinc-100 dark:border-white/10 pb-3 flex items-center justify-between">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-zinc-400" />
-                    <span>Categories ({masterData.categories.length})</span>
-                  </h3>
-                </div>
-
-                {/* Add Category Form */}
-                <form onSubmit={handleAddCategory} className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    placeholder="e.g. Mobility"
-                    className="flex-1 px-3 py-2 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                  />
-                  <button
-                    type="submit"
-                    disabled={masterActionLoading}
-                    className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1 transition disabled:opacity-50 shrink-0"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add</span>
-                  </button>
-                </form>
-
-                {/* Chips */}
-                <div className="flex flex-wrap gap-2 max-h-80 overflow-y-auto pt-1">
-                  {masterData.categories.map((cat) => (
-                    <span
-                      key={cat.id}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/5 text-zinc-800 dark:text-zinc-200 border border-zinc-200/80 dark:border-white/10"
+                  {/* Add Coach Collapsible Form */}
+                  {showAddCoach && (
+                    <form
+                      onSubmit={async (e) => {
+                        await handleAddCoach(e);
+                        setShowAddCoach(false);
+                      }}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
                     >
-                      <span>{cat.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
-                        className="text-zinc-400 hover:text-red-500 transition"
-                        title="Remove category"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">
+                        Create New Master Coach
+                      </h4>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Coach Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={newCoachName}
+                            onChange={(e) => setNewCoachName(e.target.value)}
+                            placeholder="e.g. Coach Marcus Vance"
+                            className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Title / Specialization *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={newCoachTitle}
+                            onChange={(e) => setNewCoachTitle(e.target.value)}
+                            placeholder="e.g. Master Pilates & Longevity Specialist"
+                            className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Save Coach
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCoach(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
+                  {/* Edit Coach Form */}
+                  {editingCoach && (
+                    <form
+                      onSubmit={handleUpdateCoach}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Edit Coach Profile</span>
+                      </h4>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Coach Name *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editingCoach.name}
+                            onChange={(e) =>
+                              setEditingCoach((p) => (p ? { ...p, name: e.target.value } : null))
+                            }
+                            className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                            Title / Specialization *
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={editingCoach.title}
+                            onChange={(e) =>
+                              setEditingCoach((p) => (p ? { ...p, title: e.target.value } : null))
+                            }
+                            className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Update Coach
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCoach(null)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Coaches List / Table */}
+                  <div className="border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-hidden">
+                    <div className="divide-y divide-zinc-100 dark:divide-white/5">
+                      {paginatedCoaches.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-zinc-500">
+                          {masterSearch
+                            ? `No coaches match "${masterSearch}".`
+                            : "No coaches added yet. Click \"Add Coach\" above to add one."}
+                        </div>
+                      ) : (
+                        paginatedCoaches.map((c) => (
+                          <div
+                            key={c.id}
+                            className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <div className="flex items-center gap-3.5 min-w-0">
+                              <div className="w-10 h-10 rounded-full bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-xs font-semibold text-zinc-800 dark:text-zinc-200 shrink-0">
+                                {c.name.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white truncate">
+                                  {c.name}
+                                </p>
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                                  {c.title}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCoach({ id: c.id, name: c.name, title: c.title });
+                                  setShowAddCoach(false);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition flex items-center gap-1 border border-zinc-200/60 dark:border-white/10"
+                                title="Edit coach"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCoach(c.id, c.name)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete coach"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Coaches Pagination */}
+                  <PaginationBar
+                    currentPage={coachPage}
+                    totalPages={totalCoachPages}
+                    onPageChange={setCoachPage}
+                    totalItems={filteredCoaches.length}
+                    pageSize={coachPageSize}
+                    itemLabel="coaches"
+                  />
+                </div>
+              )}
+
+              {/* 2. TARGET AUDIENCE DIRECTORY SECTION (Full Width Stack) */}
+              {(masterTab === "all" || masterTab === "audience") && (
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                          <span>Target Audience Directory</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 font-mono">
+                            {filteredAudiences.length} {filteredAudiences.length === 1 ? "Persona" : "Personas"}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Recommended demographics, life stages, and lifestyle personas
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddAudience(!showAddAudience);
+                        setEditingAudience(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddAudience ? "Close Form" : "Add Target Audience"}</span>
+                    </button>
+                  </div>
+
+                  {/* Add Audience Form */}
+                  {showAddAudience && (
+                    <form
+                      onSubmit={async (e) => {
+                        await handleAddAudience(e);
+                        setShowAddAudience(false);
+                      }}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">
+                        Create New Target Audience Persona
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Persona Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newAudienceName}
+                          onChange={(e) => setNewAudienceName(e.target.value)}
+                          placeholder="e.g. Business Woman, Postpartum Mom, Desk Worker"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Save Persona
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddAudience(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Edit Audience Form */}
+                  {editingAudience && (
+                    <form
+                      onSubmit={handleUpdateAudience}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Edit Target Audience Persona</span>
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Persona Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingAudience.name}
+                          onChange={(e) =>
+                            setEditingAudience((p) => (p ? { ...p, name: e.target.value } : null))
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Update Persona
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingAudience(null)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Audience List / Table */}
+                  <div className="border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-hidden">
+                    <div className="divide-y divide-zinc-100 dark:divide-white/5">
+                      {paginatedAudiences.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-zinc-500">
+                          {masterSearch
+                            ? `No target audience personas match "${masterSearch}".`
+                            : "No personas added yet. Click \"Add Target Audience\" above to create one."}
+                        </div>
+                      ) : (
+                        paginatedAudiences.map((aud) => (
+                          <div
+                            key={aud.id}
+                            className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 border border-zinc-200/60 dark:border-white/10">
+                                {aud.name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingAudience({ id: aud.id, name: aud.name });
+                                  setShowAddAudience(false);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition flex items-center gap-1 border border-zinc-200/60 dark:border-white/10"
+                                title="Edit persona"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAudience(aud.id, aud.name)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete persona"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Audience Pagination */}
+                  <PaginationBar
+                    currentPage={audiencePage}
+                    totalPages={totalAudiencePages}
+                    onPageChange={setAudiencePage}
+                    totalItems={filteredAudiences.length}
+                    pageSize={audiencePageSize}
+                    itemLabel="personas"
+                  />
+                </div>
+              )}
+
+              {/* 3. CATEGORIES DIRECTORY SECTION (Full Width Stack) */}
+              {(masterTab === "all" || masterTab === "categories") && (
+                <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-white/10 shadow-xs p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100 dark:border-white/10">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-zinc-100 dark:bg-white/10 flex items-center justify-center text-zinc-700 dark:text-zinc-300">
+                        <Tag className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                          <span>Categories Directory</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-white/10 text-zinc-600 dark:text-zinc-400 font-mono">
+                            {filteredCategories.length} {filteredCategories.length === 1 ? "Category" : "Categories"}
+                          </span>
+                        </h3>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          Primary movement disciplines and taxonomy classifications
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddCategory(!showAddCategory);
+                        setEditingCategory(null);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium flex items-center gap-1.5 shadow-xs hover:opacity-90 transition shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{showAddCategory ? "Close Form" : "Add Category"}</span>
+                    </button>
+                  </div>
+
+                  {/* Add Category Form */}
+                  {showAddCategory && (
+                    <form
+                      onSubmit={async (e) => {
+                        await handleAddCategory(e);
+                        setShowAddCategory(false);
+                      }}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">
+                        Create New Program Category
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Category Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newCategoryName}
+                          onChange={(e) => setNewCategoryName(e.target.value)}
+                          placeholder="e.g. Pilates, HIIT & Strength, Mobility & Longevity"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Save Category
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCategory(false)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Edit Category Form */}
+                  {editingCategory && (
+                    <form
+                      onSubmit={handleUpdateCategory}
+                      className="p-5 rounded-2xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 space-y-4 animate-in fade-in duration-200"
+                    >
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
+                        <Pencil className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Edit Category Name</span>
+                      </h4>
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                          Category Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={editingCategory.name}
+                          onChange={(e) =>
+                            setEditingCategory((p) => (p ? { ...p, name: e.target.value } : null))
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-400"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={masterActionLoading}
+                          className="px-4 py-2 rounded-xl bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-medium hover:opacity-90 transition disabled:opacity-50"
+                        >
+                          Update Category
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingCategory(null)}
+                          className="px-4 py-2 rounded-xl bg-zinc-200 dark:bg-white/10 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:opacity-80 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Categories List / Table */}
+                  <div className="border border-zinc-200/80 dark:border-white/10 rounded-2xl overflow-hidden">
+                    <div className="divide-y divide-zinc-100 dark:divide-white/5">
+                      {paginatedCategories.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-zinc-500">
+                          {masterSearch
+                            ? `No categories match "${masterSearch}".`
+                            : "No categories added yet. Click \"Add Category\" above to create one."}
+                        </div>
+                      ) : (
+                        paginatedCategories.map((cat) => (
+                          <div
+                            key={cat.id}
+                            className="p-4 sm:p-5 flex items-center justify-between gap-4 hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-zinc-100 dark:bg-white/10 text-zinc-900 dark:text-zinc-100 border border-zinc-200/60 dark:border-white/10">
+                                {cat.name}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingCategory({ id: cat.id, name: cat.name });
+                                  setShowAddCategory(false);
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-white/5 transition flex items-center gap-1 border border-zinc-200/60 dark:border-white/10"
+                                title="Edit category"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                                title="Delete category"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Categories Pagination */}
+                  <PaginationBar
+                    currentPage={categoryPage}
+                    totalPages={totalCategoryPages}
+                    onPageChange={setCategoryPage}
+                    totalItems={filteredCategories.length}
+                    pageSize={categoryPageSize}
+                    itemLabel="categories"
+                  />
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ================================================================= */}
         {/* VIEW 1C: PROGRAM DETAIL (INFO + DAILY SCHEDULE)                   */}
@@ -3432,7 +4136,7 @@ export function AdminClient({
                         ) : (
                           <Eye className="w-3.5 h-3.5" />
                         )}
-                        <span>Publish Cohort</span>
+                        <span>Publish Program</span>
                       </button>
                     ) : (
                       <button
@@ -3573,7 +4277,7 @@ export function AdminClient({
 
                         <div className="p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10 space-y-1">
                           <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 block">
-                            Lead Coach
+                            Coach / Coaches
                           </span>
                           <p className="text-sm font-semibold text-zinc-900 dark:text-white truncate">
                             {selectedProgram.coachName}
@@ -3615,7 +4319,7 @@ export function AdminClient({
                             rel="noopener noreferrer"
                             className="text-zinc-900 dark:text-white hover:underline flex items-center gap-1.5 font-sans text-xs"
                           >
-                            <span>WhatsApp Community</span> &rarr;
+                            <span>Community Group</span> &rarr;
                           </a>
                         )}
                       </div>
@@ -3676,13 +4380,13 @@ export function AdminClient({
                       <Lock className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
                       <div className="space-y-1">
                         <h4 className="text-xs font-semibold text-zinc-900 dark:text-white flex items-center gap-2">
-                          <span>Cohort Terms Locked</span>
+                          <span>Program Terms Locked</span>
                           <span className="text-[9px] uppercase px-2 py-0.5 rounded-full bg-zinc-200 dark:bg-white/10 text-zinc-700 dark:text-zinc-300 font-bold">
                             Live &amp; Active
                           </span>
                         </h4>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                          This program is currently published and open for member enrollments. Core parameters (pricing, duration, quota, and dates) are locked to protect paying customers and maintain cohort integrity. You must unpublish the program first if you need to modify core terms.
+                          This program is currently published and open for member enrollments. Core parameters (pricing, duration, quota, and dates) are locked to protect paying customers and maintain program integrity. You must unpublish the program first if you need to modify core terms.
                         </p>
                       </div>
                     </div>
@@ -3703,7 +4407,7 @@ export function AdminClient({
                           1. Program Information
                         </h3>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                          Basic cohort taxonomy, title, and public synopsis
+                          Basic program taxonomy, title, and public synopsis
                         </p>
                       </div>
 
@@ -3782,106 +4486,45 @@ export function AdminClient({
                           2. Coach &amp; Target Audience
                         </h3>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                          Assigned lead coach specialist and target demographic profiles
+                          Assigned coach instructors and target demographic profiles
                         </p>
                       </div>
 
-                      <div className="space-y-5">
-                        <div className="grid sm:grid-cols-2 gap-5">
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                              Lead Coach *
-                            </label>
-                            <select
-                              required
-                              disabled={selectedProgram.isPublished}
-                              value={metaForm.coachName}
-                              onChange={(e) => {
-                                const selectedName = e.target.value;
-                                const matchedCoach = masterData.coaches.find((c) => c.name === selectedName);
-                                setMetaForm((p) => ({
-                                  ...p,
-                                  coachName: selectedName,
-                                  coachTitle: matchedCoach ? matchedCoach.title : p.coachTitle,
-                                }));
-                              }}
-                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400"
-                            >
-                              <option value="">Select from Master Coaches...</option>
-                              {masterData.coaches.map((c) => (
-                                <option key={c.id} value={c.name} className="bg-white dark:bg-zinc-900">
-                                  {c.name} ({c.title})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                      <div className="space-y-6">
+                        <DropdownTagPicker
+                          label="Coach / Coaches"
+                          subLabel="Instructors assigned to lead this program"
+                          disabled={selectedProgram.isPublished}
+                          value={metaForm.coachName}
+                          onChange={(val) => setMetaForm((p) => ({ ...p, coachName: val }))}
+                          placeholder="Type coach name & press Enter..."
+                          options={masterData.coaches.map((c) => ({
+                            id: c.id,
+                            name: c.name,
+                            title: c.title,
+                          }))}
+                          selectPlaceholder="Pick from Master Coaches..."
+                          onManage={() => setActiveMenu("master")}
+                          manageLabel="+ Manage Coaches"
+                          icon={UserCheck}
+                        />
 
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                              Coach Title / Specialization
-                            </label>
-                            <input
-                              type="text"
-                              disabled={selectedProgram.isPublished}
-                              value={metaForm.coachTitle}
-                              onChange={(e) =>
-                                setMetaForm((p) => ({ ...p, coachTitle: e.target.value }))
-                              }
-                              placeholder="e.g. Master Pilates &amp; Mobility Specialist"
-                              className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-2.5">
-                          <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                            Recommended For (Target Audience) *
-                          </label>
-
-                          {!selectedProgram.isPublished && masterData.targetAudiences.length > 0 && (
-                            <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200/60 dark:border-white/10">
-                              {masterData.targetAudiences.map((aud) => {
-                                const currentList = metaForm.recommendedFor
-                                  .split(",")
-                                  .map((x) => x.trim())
-                                  .filter(Boolean);
-                                const isSelected = currentList.includes(aud.name);
-                                return (
-                                  <button
-                                    key={aud.id}
-                                    type="button"
-                                    onClick={() => {
-                                      setMetaForm((p) => ({
-                                        ...p,
-                                        recommendedFor: toggleTagInList(p.recommendedFor, aud.name),
-                                      }));
-                                    }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                                      isSelected
-                                        ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-semibold shadow-xs"
-                                        : "bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white border border-zinc-200 dark:border-white/10"
-                                    }`}
-                                  >
-                                    {isSelected ? "✓ " : "+ "}
-                                    {aud.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          <input
-                            type="text"
-                            required
-                            disabled={selectedProgram.isPublished}
-                            value={metaForm.recommendedFor}
-                            onChange={(e) =>
-                              setMetaForm((p) => ({ ...p, recommendedFor: e.target.value }))
-                            }
-                            placeholder="e.g. Corporate Workers, Busy Mothers, Desk Professionals (comma separated)"
-                            className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
-                          />
-                        </div>
+                        <DropdownTagPicker
+                          label="Recommended For (Target Audience)"
+                          subLabel="Ideal participant demographics & personas"
+                          disabled={selectedProgram.isPublished}
+                          value={metaForm.recommendedFor}
+                          onChange={(val) => setMetaForm((p) => ({ ...p, recommendedFor: val }))}
+                          placeholder="Type audience persona & press Enter..."
+                          options={masterData.targetAudiences.map((a) => ({
+                            id: a.id,
+                            name: a.name,
+                          }))}
+                          selectPlaceholder="Pick from Master Audience..."
+                          onManage={() => setActiveMenu("master")}
+                          manageLabel="+ Manage Audience"
+                          icon={Sparkles}
+                        />
                       </div>
                     </div>
 
@@ -4191,20 +4834,20 @@ export function AdminClient({
                       </div>
                     </div>
 
-                    {/* SECTION 6: WHATSAPP COMMUNITY LINK */}
+                    {/* SECTION 6: COMMUNITY CHANNEL LINK */}
                     <div className="space-y-5 pt-6 border-t border-zinc-100 dark:border-white/10">
                       <div className="border-b border-zinc-100 dark:border-white/10 pb-3">
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-900 dark:text-white">
-                          6. Community &amp; Communication Link
+                          6. Community Channel / Group URL
                         </h3>
                         <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1">
-                          Private WhatsApp community link provided to enrolled cohort members
+                          Private group or channel link for enrolled members (WhatsApp, Discord, LINE, WeChat, Slack, Telegram)
                         </p>
                       </div>
 
                       <div className="space-y-2">
                         <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                          WhatsApp Community Group URL
+                          Community Channel / Group URL
                         </label>
                         <input
                           type="url"
@@ -4213,7 +4856,7 @@ export function AdminClient({
                           onChange={(e) =>
                             setMetaForm((p) => ({ ...p, communityLink: e.target.value }))
                           }
-                          placeholder="https://chat.whatsapp.com/..."
+                          placeholder="https://chat.whatsapp.com/..., discord.gg/..., line.me/..., etc."
                           className="w-full px-4 py-2.5 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-xs text-zinc-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-zinc-400 placeholder:text-zinc-400"
                         />
                       </div>
@@ -4222,8 +4865,8 @@ export function AdminClient({
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6 border-t border-zinc-100 dark:border-white/10">
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
                         {selectedProgram.isPublished
-                          ? "Cohort is currently live. Unpublish to adjust core schedule, quota, or pricing parameters."
-                          : "Save updates to cohort information. All daily routines will adjust to new duration."}
+                          ? "Program is currently live. Unpublish to adjust core schedule, quota, or pricing parameters."
+                          : "Save updates to program information. All daily routines will adjust to new duration."}
                       </span>
 
                       {selectedProgram.isPublished ? (
@@ -4495,7 +5138,7 @@ export function AdminClient({
                     <div className="space-y-1.5">
                       <label className="block text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
                         <UserCheck className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                        <span>Lead Coach for Day {selectedDayNum}</span>
+                        <span>Assigned Coach for Day {selectedDayNum}</span>
                       </label>
 
                       <select
@@ -4509,6 +5152,13 @@ export function AdminClient({
                             {coach}
                           </option>
                         ))}
+                        {masterData.coaches
+                          .filter((mc) => !parseTagList(selectedProgram.coachName).includes(mc.name))
+                          .map((mc) => (
+                            <option key={mc.id} value={mc.name}>
+                              {mc.name} ({mc.title})
+                            </option>
+                          ))}
                       </select>
 
                       {parseTagList(selectedProgram.coachName).length > 0 && (
@@ -5027,7 +5677,7 @@ export function AdminClient({
               {/* Action Footer */}
               <div className="pt-4 border-t border-zinc-100 dark:border-white/10 flex flex-wrap items-center justify-between gap-4">
                 <span className="text-[11px] text-zinc-400">
-                  Changes save directly to cohort schedule in the SQLite database.
+                  Changes save directly to program schedule in the SQLite database.
                 </span>
 
                 <div className="flex items-center gap-3">
@@ -5383,7 +6033,7 @@ export function AdminClient({
                       Cannot Publish Program
                     </h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                      To protect paying customers and maintain strict cohort integrity, all parameters and daily routines must be 100% completed before publishing.
+                      To protect paying customers and maintain strict program integrity, all parameters and daily routines must be 100% completed before publishing.
                     </p>
                   </div>
                 </div>
@@ -5438,7 +6088,7 @@ export function AdminClient({
                       Strict Launch Guard
                     </span>
                     <h3 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white">
-                      Confirm Cohort Launch &amp; Lock
+                      Confirm Program Launch &amp; Lock
                     </h3>
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
                       Are you sure you want to activate and publish this program?

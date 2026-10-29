@@ -870,7 +870,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
           </span>
         </Link>
 
-        {/* Desktop Navigation (3 Menus: My Ritual, Cohorts, Settings) */}
+        {/* Desktop Navigation (3 Menus: My Ritual, Programs, Settings) */}
         <nav className="hidden sm:flex items-center gap-1.5 shrink-0 text-xs font-mono font-medium">
           <button
             onClick={() => setActiveTab("my_plan")}
@@ -892,7 +892,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
             }`}
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>Cohorts</span>
+            <span>Programs</span>
           </button>
           <button
             onClick={() => setActiveTab("setting")}
@@ -959,7 +959,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
           }`}
         >
           <Compass className="w-3.5 h-3.5" />
-          <span className="text-[11px]">Cohorts</span>
+          <span className="text-[11px]">Programs</span>
         </button>
 
         <button
@@ -995,7 +995,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
           </div>
         )}
 
-        {/* TAB 1: DAILY CURRICULUM & BENTO GRID (ONLY ENROLLED COHORTS) */}
+        {/* TAB 1: DAILY CURRICULUM & BENTO GRID (ONLY ENROLLED PROGRAMS) */}
         {activeTab === "my_plan" && (
           <div className="space-y-10 sm:space-y-12">
             {!currentProgram ? (
@@ -1014,13 +1014,13 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 </div>
                 <div className="space-y-2.5 max-w-md relative z-10 font-mono">
                   <span className="text-micro text-zinc-500 dark:text-zinc-400 block tracking-[0.24em] uppercase font-semibold">
-                    No Enrolled Cohort
+                    No Enrolled Program
                   </span>
                   <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-white font-geometric">
-                    You haven&apos;t joined a cohort yet.
+                    You haven&apos;t joined a program yet.
                   </h2>
                   <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 font-light leading-relaxed font-mono">
-                    My Ritual exclusively displays the cohorts you are participating in. Explore our curated active curriculums to unlock your daily movement protocols, whole food plans, and community channel.
+                    My Ritual exclusively displays the programs you are participating in. Explore our curated active curriculums to unlock your daily movement protocols, whole food plans, and community channel.
                   </p>
                 </div>
                 <div className="relative z-10 pt-2 font-mono">
@@ -1029,18 +1029,18 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     onClick={() => setActiveTab("all_plan")}
                     className="px-7 py-3 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-2 shadow-xl transition duration-200"
                   >
-                    <span>Explore Cohorts</span>
+                    <span>Explore Programs</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                {/* Cohort Switcher (ONLY shown if user is enrolled in multiple programs) */}
+                {/* Program Switcher (ONLY shown if user is enrolled in multiple programs) */}
                 {myEnrolledPrograms.length > 1 && (
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none font-mono">
                     <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 shrink-0">
-                      Your Cohorts:
+                      Your Programs:
                     </span>
                     {myEnrolledPrograms.map((p) => {
                       const isSel = p.id === currentProgram.id;
@@ -1082,7 +1082,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                     <div className="space-y-3 relative z-10 text-white font-mono">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-micro px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 uppercase tracking-[0.2em] text-white">
-                          Active Cohort
+                          Active Program
                         </span>
                         {hasActiveAccess ? (
                           <span className="text-micro px-3 py-1 rounded-full chrome-badge text-white uppercase tracking-wider">
@@ -1436,7 +1436,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                             Members-Only Curriculum
                           </h3>
                           <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-md mx-auto leading-relaxed font-light">
-                            Enroll in this cohort to unlock daily movement sequences, circadian recovery guidance, and personalized self-assessments.
+                            Enroll in this program to unlock daily movement sequences, circadian recovery guidance, and personalized self-assessments.
                           </p>
                         </div>
                         <div className="pt-2">
@@ -1469,7 +1469,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                             <span className="text-zinc-900 dark:text-white font-medium">
                               {formatShortDate(currentDay.unlockDate)}
                             </span>{" "}
-                            in synchronization with your batch cohort.
+                            in synchronization with your batch schedule.
                           </p>
                         </div>
                       </div>
@@ -1805,14 +1805,14 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
               <div className="flex items-center gap-2 font-mono">
                 <span className="w-1.5 h-1.5 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
                 <span className="text-micro uppercase tracking-[0.24em] font-semibold text-zinc-400 dark:text-zinc-500 font-mono">
-                  Curated Cohorts
+                  Curated Programs
                 </span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extralight tracking-tight text-zinc-900 dark:text-white font-geometric">
                 Longevity &amp; Movement <span className="font-geometric italic text-zinc-500 dark:text-zinc-400 font-light">Protocols</span>
               </h1>
               <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 max-w-xl font-light leading-relaxed">
-                Choose your structured longevity and movement protocol. Strictly capped at 35 members per cohort to preserve intimate coach attention.
+                Choose your structured longevity and movement protocol. Strictly capped at 35 members per program to preserve intimate coach attention.
               </p>
             </div>
 
@@ -1941,7 +1941,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
                           {prog.status === "COMING_SOON" ? (
                             <a
-                              href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk cohort: ${prog.title}`)}`}
+                              href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk program: ${prog.title}`)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="px-5 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide inline-flex items-center gap-1.5 transition shadow"
@@ -1979,7 +1979,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                               ) : (
                                 <>
                                   <QrCode className="w-3.5 h-3.5" />
-                                  <span>Join Cohort</span>
+                                  <span>Join Program</span>
                                 </>
                               )}
                             </button>
@@ -2314,7 +2314,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 Delete Account
               </h3>
               <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed font-light">
-                Permanently purge your BMS account, personal logs, streak histories, and active cohort enrollments. This cannot be reversed.
+                Permanently purge your BMS account, personal logs, streak histories, and active program enrollments. This cannot be reversed.
               </p>
               <div className="pt-2">
                 <button
@@ -2433,7 +2433,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
 
               <div className="absolute bottom-4 left-5 right-5 text-white space-y-1">
                 <span className="px-2.5 py-0.5 rounded-full glass-image-overlay text-[10px] font-semibold uppercase tracking-wider">
-                  {detailedProgram.dayCount} Days Cohort
+                  {detailedProgram.dayCount} Days Program
                 </span>
                 <h3 className="text-lg font-bold tracking-tight">
                   {detailedProgram.title}
@@ -2466,7 +2466,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-4 rounded-2xl glass-panel-subtle space-y-1">
                   <span className="text-micro uppercase tracking-wider text-zinc-400 block">
-                    Lead Coach
+                    Coach / Coaches
                   </span>
                   <strong className="font-medium text-zinc-900 dark:text-white">
                     {detailedProgram.coachName}
@@ -2554,7 +2554,7 @@ export function DashboardClient({ user, myPrograms, allPrograms }: DashboardProp
                 if (detailedProgram.status === "COMING_SOON") {
                   return (
                     <a
-                      href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk cohort: ${detailedProgram.title}`)}`}
+                      href={`https://wa.me/6281290002026?text=${encodeURIComponent(`Halo BMS Concierge, saya ingin bergabung ke waitlist untuk program: ${detailedProgram.title}`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-6 py-2.5 rounded-full chrome-button text-xs font-semibold tracking-wide flex items-center gap-2 transition font-mono shadow-md"
